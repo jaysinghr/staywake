@@ -1,0 +1,127 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 2: THE PERFORMANCE PRO",
+  "slogan": "Wake up. Stay up.",
+  "navigation_architecture": {
+    "type": "Bottom Tabs + Stack",
+    "details": "Bottom Tabs for main sections: 'Alarms', 'Stats'. Stack navigator for 'Set Alarm' modal, 'Alarm Ringing' full screen interrupt, 'Proof Mission' screen, and 'Check-in' alert."
+  },
+  "colors": {
+    "background": "#0A0A0A",
+    "surface": "#141414",
+    "surfaceHighlight": "#1E1E1E",
+    "border": "#262626",
+    "primary": "#00E5FF",
+    "primaryHover": "#00B8CC",
+    "urgent": "#FF3B30",
+    "urgentHover": "#CC2F26",
+    "textPrimary": "#FFFFFF",
+    "textSecondary": "#888888",
+    "success": "#34C759"
+  },
+  "typography": {
+    "primaryFont": "Barlow Condensed",
+    "secondaryFont": "Manrope",
+    "monoFont": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "font-family: Barlow Condensed, font-size: 48px, font-weight: 900, text-transform: uppercase, letter-spacing: -1px",
+      "h2": "font-family: Barlow Condensed, font-size: 32px, font-weight: 800, text-transform: uppercase",
+      "h3": "font-family: Barlow Condensed, font-size: 24px, font-weight: 700, text-transform: uppercase",
+      "alarmTime": "font-family: Barlow Condensed, font-size: 80px, font-weight: 900, letter-spacing: -2px, line-height: 80px",
+      "body": "font-family: Manrope, font-size: 16px, font-weight: 500, color: #FFFFFF",
+      "bodySmall": "font-family: Manrope, font-size: 14px, font-weight: 500, color: #888888",
+      "label": "font-family: Manrope, font-size: 12px, font-weight: 800, text-transform: uppercase, letter-spacing: 2px, color: #888888",
+      "missionText": "font-family: JetBrains Mono, font-size: 28px, font-weight: 700"
+    }
+  },
+  "spacing_and_layout": {
+    "grid": "Grid Borders and Flat Tactical Surfaces. Avoid soft shadows. Use 1px solid borders.",
+    "padding": {
+      "screen": "24px",
+      "card": "20px",
+      "input": "16px",
+      "button": "16px 24px"
+    },
+    "borderRadius": {
+      "container": "8px",
+      "button": "6px",
+      "input": "6px",
+      "card": "8px"
+    },
+    "alignment": "Left-align forms and dense content. Center-align extreme actions like 'Wake Up' and Mission constraints."
+  },
+  "components": {
+    "buttons": {
+      "primary": "Background #00E5FF, Text #0A0A0A (Black), Font Weight 900 Uppercase, Border Radius 6px, Padding 16px. No shadow.",
+      "urgent": "Background #FF3B30, Text #FFFFFF, Font Weight 900 Uppercase, Border Radius 6px, Padding 16px.",
+      "ghost": "Background transparent, Border 1px solid #262626, Text #FFFFFF, Font Weight 700."
+    },
+    "cards": {
+      "default": "Background #141414, Border 1px solid #262626, Border Radius 8px, Padding 20px.",
+      "active": "Background #1E1E1E, Border 1px solid #00E5FF, Border Radius 8px, Padding 20px."
+    },
+    "inputs": {
+      "text": "Background #0A0A0A, Border 2px solid #262626, Text #FFFFFF, Padding 16px, Border Radius 6px. Focus state: Border #00E5FF.",
+      "toggle": "Track off: #262626, Track on: #00E5FF, Thumb: #FFFFFF."
+    }
+  },
+  "micro_interactions": [
+    "Haptics: Provide heavy haptic feedback on toggle press, mission start, typing keys in mission, and successful check-in.",
+    "Alarm Pulse: The background on the ringing screen should scale and pulse in opacity to simulate extreme urgency.",
+    "Shake animation: If user fails typing/math, shake the input container horizontally."
+  ],
+  "screens": {
+    "home_alarm_list": {
+      "layout": "Header with 'STAYWAKE' in H2. Scrollable list of alarm cards. Floating Action Button (FAB) or large bottom button to 'ADD ALARM'.",
+      "visuals": "Alarm cards show Time (massive), AM/PM, Mission type icon, and a large toggle. Use 'empty_state_sleep' image centered if list is empty."
+    },
+    "set_alarm": {
+      "layout": "Modal (bottom sheet style). Large vertical time picker wheel. Bento grid for 'Mission Type' (Math, Type, Shake) and 'Check-in Frequency' (e.g., 5 min, 10 min).",
+      "visuals": "Tactical selection: Unselected grid items have #262626 borders. Selected items have #00E5FF borders and #1E1E1E backgrounds."
+    },
+    "alarm_ringing": {
+      "layout": "Absolute full-screen takeover. Z-index max.",
+      "visuals": "Background image 'alarm_ringing_bg' with a black/red overlay (opacity 0.6). Giant '07:30' text. Massive 'STOP ALARM' urgent button. It should feel aggressive and impossible to ignore."
+    },
+    "proof_mission": {
+      "layout": "Top: Instructions ('Type this phrase exactly' or 'Solve Math'). Middle: The challenge text and input field. Bottom: Native Keyboard or Custom Numpad.",
+      "visuals": "Strict, terminal-like UI. Use JetBrains Mono for the challenge. Error state turns input border #FF3B30."
+    },
+    "stay_awake_checkin": {
+      "layout": "Interrupt modal. Giant countdown circle or bar (e.g., 60 seconds to respond).",
+      "visuals": "Uses 'success_bg' very subtly. Prominent 'I AM AWAKE' button which triggers a mini mission."
+    },
+    "success_stats": {
+      "layout": "Dashboard bento layout. Top section shows current streak (massive number). Middle sections show win/loss ratio.",
+      "visuals": "Dark UI with #00E5FF accents for wins, #FF3B30 for missed days. Tactical high-contrast metrics."
+    }
+  },
+  "media_urls": {
+    "alarm_ringing_bg": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/ce363986-e6d5-4aeb-bf21-83edcd01fbcf/images/aa5de390aa0b0f120637c001ba4ad5205b5bbe8c88d396aef2605708f2266d26.png",
+      "description": "Abstract dark background with intense glowing red/orange kinetic lines. Use as absolute background for the 'Alarm Ringing' screen to maximize urgency.",
+      "category": "background_urgent"
+    },
+    "success_bg": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/ce363986-e6d5-4aeb-bf21-83edcd01fbcf/images/dca2ef3a833f5de41281e7feee5f9ab6cc585646fc15d60e5aca00c2191a32fc.png",
+      "description": "Abstract dark background with glowing electric blue and white geometric shapes. Use subtly for 'Check-in' active states or 'Morning Success' header.",
+      "category": "background_success"
+    },
+    "empty_state_sleep": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/ce363986-e6d5-4aeb-bf21-83edcd01fbcf/images/7f653a861b6fbe3f338154ab59158ce7df04edceb0613eb65d191e3ae4a6121f.png",
+      "description": "Minimalist dark 3D illustration of a closed eye/moon with neon blue rim light. Use for empty alarm list state on Home screen.",
+      "category": "illustration"
+    }
+  },
+  "testing_attributes": {
+    "rule": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  },
+  "instructions_to_main_agent": [
+    "This is a React Native Expo app. Translate all design variables into React Native StyleSheet objects or NativeWind classes. Flexbox is standard.",
+    "Do NOT use 'Inter' for headings. Use 'Barlow Condensed' for an athletic, heavy-weight feel. Use 'JetBrains Mono' for math/typing proofs.",
+    "Implement the UI with a strict tactical look. No soft, feathery shadows. Use solid 1px borders (#262626) and high contrast. Dark Mode is mandatory.",
+    "The App must feel like a 'wake-up completion system', not a normal alarm. The Ringing screen must be visually aggressive and stressful.",
+    "Apply data-testid to every button, switch, input, and major view for end-to-end testing.",
+    "Use the provided image URLs via React Native <Image> or <ImageBackground> components with appropriate styling (e.g., overlay opacities)."
+  ]
+}
