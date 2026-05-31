@@ -1,4 +1,4 @@
-import { Difficulty } from "../types";
+import { Difficulty, MissionType } from "../types";
 
 export interface MathChallenge {
   prompt: string;
@@ -22,17 +22,9 @@ export function genMath(difficulty: Difficulty): MathChallenge {
     if (op === "+") return { prompt: `${a + 10} + ${b * 2}`, answer: String(a + 10 + b * 2) };
     return { prompt: `${a} × ${b}`, answer: String(a * b) };
   }
-  // hard
   const a = rnd(11, 19);
   const b = rnd(11, 19);
   return { prompt: `${a} × ${b}`, answer: String(a * b) };
-}
-
-// Quick mini-math for check-ins (always fast)
-export function genMiniMath(): MathChallenge {
-  const a = rnd(2, 9);
-  const b = rnd(2, 9);
-  return { prompt: `${a} + ${b}`, answer: String(a + b) };
 }
 
 const PHRASES = [
@@ -60,10 +52,11 @@ export function shakeTarget(difficulty: Difficulty): number {
   return 40;
 }
 
-export function resolveMissionType(
-  type: "math" | "typing" | "shake" | "random",
+// Resolve a mission to one runnable in-app. QR/Step require a device build,
+// so in preview they gracefully fall back to math.
+export function resolveDismissMission(
+  type: MissionType,
 ): "math" | "typing" | "shake" {
-  if (type !== "random") return type;
-  const pool: ("math" | "typing" | "shake")[] = ["math", "typing", "shake"];
-  return pool[rnd(0, pool.length - 1)];
+  if (type === "math" || type === "typing" || type === "shake") return type;
+  return "math";
 }

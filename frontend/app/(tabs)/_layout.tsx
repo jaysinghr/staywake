@@ -32,19 +32,23 @@ export default function TabsLayout() {
         options={{
           title: "Alarms",
           // eslint-disable-next-line react/no-unstable-nested-components
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="alarm" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="alarm" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="stats"
         options={{
-          title: "Stats",
+          title: "Progress",
           // eslint-disable-next-line react/no-unstable-nested-components
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          // eslint-disable-next-line react/no-unstable-nested-components
+          tabBarIcon: ({ color, size }) => <Ionicons name="settings-sharp" size={size} color={color} />,
         }}
       />
     </Tabs>

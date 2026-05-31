@@ -1,53 +1,38 @@
 import React, { useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  KeyboardAwareScrollView,
-  KeyboardStickyView,
-} from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 
 import { useAlarm } from "@/src/store/AlarmContext";
-import { Difficulty, MissionType } from "@/src/types";
+import { Difficulty, MissionType, StayAwakeMode } from "@/src/types";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { DAY_LABELS } from "@/src/lib/time";
+import { presetDays, presetOf, RepeatPreset } from "@/src/lib/repeat";
+import { STAY_AWAKE_MODES } from "@/src/lib/staywake";
+import { SOUNDS } from "@/src/lib/sounds";
 import TimePicker from "@/src/components/TimePicker";
 import Button from "@/src/components/Button";
 
-const MISSIONS: { key: MissionType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "math", label: "Math", icon: "calculator" },
-  { key: "typing", label: "Type", icon: "create" },
-  { key: "shake", label: "Shake", icon: "phone-portrait" },
-  { key: "random", label: "Random", icon: "shuffle" },
+const MISSIONS: { key: MissionType; label: string; icon: keyof typeof Ionicons.glyphMap; pro: boolean; build?: boolean }[] = [
+  { key: "math", label: "Math", icon: "calculator", pro: false },
+  { key: "typing", label: "Type", icon: "create", pro: false },
+  { key: "shake", label: "Shake", icon: "phone-portrait", pro: false },
+  { key: "qr", label: "QR Scan", icon: "qr-code", pro: true, build: true },
+  { key: "step", label: "Steps", icon: "walk", pro: true, build: true },
 ];
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
-const COUNTS = [1, 2, 3, 4];
-const INTERVALS = [1, 3, 5, 10, 15];
+const PRESETS: { key: RepeatPreset; label: string }[] = [
+  { key: "once", label: "Once" },
+  { key: "everyday", label: "Every day" },
+  { key: "weekdays", label: "Weekdays" },
+  { key: "weekends", label: "Weekends" },
+];
 
-function Pill({
-  active,
-  onPress,
-  children,
-  testID,
-}: {
-  active: boolean;
-  onPress: () => void;
-  children: React.ReactNode;
-  testID?: string;
-}) {
+function Pill({ active, locked, onPress, children, testID }: { active: boolean; locked?: boolean; onPress: () => void; children: React.ReactNode; testID?: string }) {
   return (
-    <Pressable
-      testID={testID}
-      onPress={onPress}
-      style={[styles.pill, active && styles.pillActive]}
-    >
+    <Pressable testID={testID} onPress={onPress} style={[styles.pill, active && styles.pillActive, locked && styles.pillLocked]}>
       {children}
     </Pressable>
   );
@@ -55,7 +40,7 @@ function Pill({
 
 export default function SetAlarmScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { getAlarm, addAlarm, updateAlarm, deleteAlarm } = useAlarm();
+  const { getAlarm, addAlarm, updateAlarm, deleteAlarm, settings, isPro } = useAlarm();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -65,16 +50,39 @@ export default function SetAlarmScreen() {
   const [minute, setMinute] = useState(existing?.minute ?? 0);
   const [label, setLabel] = useState(existing?.label ?? "Wake Up");
   const [repeatDays, setRepeatDays] = useState<number[]>(existing?.repeatDays ?? [1, 2, 3, 4, 5]);
-  const [missionType, setMissionType] = useState<MissionType>(existing?.missionType ?? "math");
+  const [missionType, setMissionType] = useState<MissionType>(existing?.missionType ?? settings.defaultMission);
   const [difficulty, setDifficulty] = useState<Difficulty>(existing?.difficulty ?? "medium");
-  const [checkInCount, setCheckInCount] = useState(existing?.checkInCount ?? 2);
-  const [interval, setIntervalVal] = useState(existing?.checkInIntervalMin ?? 5);
-  const [sound, setSound] = useState(existing?.sound ?? true);
+  const [mode, setMode] = useState<StayAwakeMode>(existing?.stayAwakeMode ?? settings.defaultMode);
+  const [sound, setSound] = useState(existing?.sound ?? settings.defaultSound);
+
+  const preset = presetOf(repeatDays);
 
   const toggleDay = (d: number) => {
-    setRepeatDays((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort(),
-    );
+    setRepeatDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
+  };
+
+  const pickMission = (m: typeof MISSIONS[number]) => {
+    if (m.pro && !isPro) {
+      router.push("/paywall");
+      return;
+    }
+    setMissionType(m.key);
+  };
+
+  const pickMode = (m: StayAwakeMode) => {
+    if (STAY_AWAKE_MODES[m].pro && !isPro) {
+      router.push("/paywall");
+      return;
+    }
+    setMode(m);
+  };
+
+  const pickSound = (sid: string, pro: boolean) => {
+    if (pro && !isPro) {
+      router.push("/paywall");
+      return;
+    }
+    setSound(sid);
   };
 
   const onSave = async () => {
@@ -86,8 +94,7 @@ export default function SetAlarmScreen() {
       repeatDays,
       missionType,
       difficulty,
-      checkInCount,
-      checkInIntervalMin: interval,
+      stayAwakeMode: mode,
       sound,
     };
     if (existing) await updateAlarm(existing.id, data);
@@ -100,6 +107,8 @@ export default function SetAlarmScreen() {
     router.back();
   };
 
+  const selectedMission = MISSIONS.find((m) => m.key === missionType);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.topBar}>
@@ -110,11 +119,7 @@ export default function SetAlarmScreen() {
         <View style={{ width: 28 }} />
       </View>
 
-      <KeyboardAwareScrollView
-        bottomOffset={90}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
-      >
+      <KeyboardAwareScrollView bottomOffset={90} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={styles.pickerWrap}>
           <TimePicker hour={hour} minute={minute} onChange={(h, m) => { setHour(h); setMinute(m); }} />
         </View>
@@ -130,107 +135,86 @@ export default function SetAlarmScreen() {
         />
 
         <Text style={styles.sectionLabel}>REPEAT</Text>
+        <View style={styles.presetRow}>
+          {PRESETS.map((p) => (
+            <Pill key={p.key} testID={`preset-${p.key}`} active={preset === p.key} onPress={() => setRepeatDays(presetDays(p.key, repeatDays))}>
+              <Text style={[styles.pillText, preset === p.key && styles.pillTextActive]}>{p.label}</Text>
+            </Pill>
+          ))}
+        </View>
         <View style={styles.daysRow}>
           {DAY_LABELS.map((d, i) => (
-            <Pressable
-              key={i}
-              testID={`day-${i}`}
-              onPress={() => toggleDay(i)}
-              style={[styles.dayBtn, repeatDays.includes(i) && styles.dayBtnActive]}
-            >
-              <Text style={[styles.dayText, repeatDays.includes(i) && styles.dayTextActive]}>
-                {d}
-              </Text>
+            <Pressable key={i} testID={`day-${i}`} onPress={() => toggleDay(i)} style={[styles.dayBtn, repeatDays.includes(i) && styles.dayBtnActive]}>
+              <Text style={[styles.dayText, repeatDays.includes(i) && styles.dayTextActive]}>{d}</Text>
             </Pressable>
           ))}
         </View>
 
         <Text style={styles.sectionLabel}>PROOF MISSION (TO STOP ALARM)</Text>
         <View style={styles.grid}>
-          {MISSIONS.map((m) => (
-            <Pill
-              key={m.key}
-              testID={`mission-${m.key}`}
-              active={missionType === m.key}
-              onPress={() => setMissionType(m.key)}
-            >
-              <Ionicons
-                name={m.icon}
-                size={16}
-                color={missionType === m.key ? colors.primary : colors.textSecondary}
-              />
-              <Text style={[styles.pillText, missionType === m.key && styles.pillTextActive]}>
-                {m.label}
-              </Text>
-            </Pill>
-          ))}
+          {MISSIONS.map((m) => {
+            const locked = m.pro && !isPro;
+            return (
+              <Pill key={m.key} testID={`mission-${m.key}`} active={missionType === m.key} locked={locked} onPress={() => pickMission(m)}>
+                <Ionicons name={m.icon} size={16} color={missionType === m.key ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.pillText, missionType === m.key && styles.pillTextActive]}>{m.label}</Text>
+                {locked && <Ionicons name="lock-closed" size={11} color={colors.textSecondary} />}
+              </Pill>
+            );
+          })}
         </View>
+        {selectedMission?.build && (
+          <Text style={styles.buildNote}>
+            <Ionicons name="information-circle" size={12} color={colors.primary} /> {selectedMission.label} runs on a real device build. In preview it falls back to Math.
+          </Text>
+        )}
 
-        <Text style={styles.sectionLabel}>DIFFICULTY</Text>
+        <Text style={styles.sectionLabel}>MISSION TARGET</Text>
         <View style={styles.grid}>
           {DIFFICULTIES.map((d) => (
-            <Pill
-              key={d}
-              testID={`difficulty-${d}`}
-              active={difficulty === d}
-              onPress={() => setDifficulty(d)}
-            >
-              <Text style={[styles.pillText, difficulty === d && styles.pillTextActive]}>
-                {d.toUpperCase()}
-              </Text>
+            <Pill key={d} testID={`difficulty-${d}`} active={difficulty === d} onPress={() => setDifficulty(d)}>
+              <Text style={[styles.pillText, difficulty === d && styles.pillTextActive]}>{d.toUpperCase()}</Text>
             </Pill>
           ))}
         </View>
 
-        <Text style={styles.sectionLabel}>STAY-AWAKE CHECK-INS</Text>
+        <Text style={styles.sectionLabel}>STAY-AWAKE MODE</Text>
+        <View style={styles.modeCol}>
+          {(["light", "standard", "strict"] as StayAwakeMode[]).map((m) => {
+            const cfg = STAY_AWAKE_MODES[m];
+            const locked = cfg.pro && !isPro;
+            const active = mode === m;
+            return (
+              <Pressable key={m} testID={`mode-${m}`} onPress={() => pickMode(m)} style={[styles.modeCard, active && styles.modeCardActive]}>
+                <View style={styles.modeLeft}>
+                  <Text style={[styles.modeLabel, active && { color: colors.primary }]}>{cfg.label}</Text>
+                  <Text style={styles.modeDesc}>{cfg.desc}</Text>
+                </View>
+                {locked ? (
+                  <View style={styles.proTag}>
+                    <Ionicons name="lock-closed" size={11} color={colors.primary} />
+                    <Text style={styles.proTagText}>PRO</Text>
+                  </View>
+                ) : (
+                  <Ionicons name={active ? "radio-button-on" : "radio-button-off"} size={22} color={active ? colors.primary : colors.textSecondary} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.sectionLabel}>ALARM SOUND</Text>
         <View style={styles.grid}>
-          {COUNTS.map((c) => (
-            <Pill
-              key={c}
-              testID={`checkin-count-${c}`}
-              active={checkInCount === c}
-              onPress={() => setCheckInCount(c)}
-            >
-              <Text style={[styles.pillText, checkInCount === c && styles.pillTextActive]}>
-                {c}×
-              </Text>
-            </Pill>
-          ))}
+          {SOUNDS.map((s) => {
+            const locked = s.pro && !isPro;
+            return (
+              <Pill key={s.id} testID={`sound-${s.id}`} active={sound === s.id} locked={locked} onPress={() => pickSound(s.id, s.pro)}>
+                <Text style={[styles.pillText, sound === s.id && styles.pillTextActive]}>{s.label}</Text>
+                {locked && <Ionicons name="lock-closed" size={11} color={colors.textSecondary} />}
+              </Pill>
+            );
+          })}
         </View>
-
-        <Text style={styles.sectionLabel}>CHECK-IN INTERVAL</Text>
-        <View style={styles.grid}>
-          {INTERVALS.map((iv) => (
-            <Pill
-              key={iv}
-              testID={`interval-${iv}`}
-              active={interval === iv}
-              onPress={() => setIntervalVal(iv)}
-            >
-              <Text style={[styles.pillText, interval === iv && styles.pillTextActive]}>
-                {iv} min
-              </Text>
-            </Pill>
-          ))}
-        </View>
-
-        <Pressable
-          testID="sound-toggle"
-          onPress={() => setSound((s) => !s)}
-          style={styles.soundRow}
-        >
-          <View style={styles.soundLeft}>
-            <Ionicons
-              name={sound ? "volume-high" : "volume-mute"}
-              size={20}
-              color={sound ? colors.primary : colors.textSecondary}
-            />
-            <Text style={styles.soundText}>Alarm sound</Text>
-          </View>
-          <View style={[styles.checkbox, sound && styles.checkboxOn]}>
-            {sound && <Ionicons name="checkmark" size={16} color={colors.black} />}
-          </View>
-        </Pressable>
 
         {existing && (
           <Pressable testID="delete-alarm" onPress={onDelete} style={styles.deleteBtn}>
@@ -251,98 +235,33 @@ export default function SetAlarmScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.md,
-  },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
   title: { fontFamily: fonts.extraBold, fontSize: 20, letterSpacing: 1, color: colors.textPrimary },
   pickerWrap: { alignItems: "center", marginBottom: spacing.md },
-  sectionLabel: {
-    fontFamily: fonts.bodyExtra,
-    fontSize: 12,
-    letterSpacing: 2,
-    color: colors.textSecondary,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  input: {
-    backgroundColor: colors.background,
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderRadius: radius.input,
-    color: colors.textPrimary,
-    fontFamily: fonts.body,
-    fontSize: 16,
-    padding: spacing.md,
-  },
+  sectionLabel: { fontFamily: fonts.bodyExtra, fontSize: 12, letterSpacing: 2, color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm },
+  input: { backgroundColor: colors.background, borderWidth: 2, borderColor: colors.border, borderRadius: radius.input, color: colors.textPrimary, fontFamily: fonts.body, fontSize: 16, padding: spacing.md },
+  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
   daysRow: { flexDirection: "row", justifyContent: "space-between" },
-  dayBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-  },
+  dayBtn: { width: 42, height: 42, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   dayBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   dayText: { fontFamily: fonts.bold, fontSize: 16, color: colors.textSecondary },
   dayTextActive: { color: colors.black },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
+  pill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radius.button, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   pillActive: { borderColor: colors.primary, backgroundColor: colors.surfaceHighlight },
+  pillLocked: { opacity: 0.7 },
   pillText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.textSecondary },
   pillTextActive: { color: colors.primary },
-  soundRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: spacing.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.card,
-    padding: spacing.md,
-  },
-  soundLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  soundText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textPrimary },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  deleteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: spacing.xl,
-    paddingVertical: spacing.md,
-  },
+  buildNote: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 18 },
+  modeCol: { gap: spacing.sm },
+  modeCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.card, padding: spacing.md },
+  modeCardActive: { borderColor: colors.primary, backgroundColor: colors.surfaceHighlight },
+  modeLeft: { flex: 1 },
+  modeLabel: { fontFamily: fonts.bold, fontSize: 18, color: colors.textPrimary },
+  modeDesc: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  proTag: { flexDirection: "row", alignItems: "center", gap: 3, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
+  proTagText: { fontFamily: fonts.bodyExtra, fontSize: 10, letterSpacing: 1, color: colors.primary },
+  deleteBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: spacing.xl, paddingVertical: spacing.md },
   deleteText: { fontFamily: fonts.bodyExtra, fontSize: 14, letterSpacing: 1, color: colors.urgent },
-  saveBar: {
-    paddingTop: spacing.sm,
-    paddingHorizontal: 0,
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
+  saveBar: { paddingTop: spacing.sm, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border },
 });

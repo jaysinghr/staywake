@@ -1,34 +1,22 @@
 import React, { useEffect, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useAlarm } from "@/src/store/AlarmContext";
+import { useAlarm, FREE_ALARM_LIMIT } from "@/src/store/AlarmContext";
 import { Alarm, MissionType } from "@/src/types";
 import { colors, fonts, media, radius, spacing } from "@/src/theme";
 import { repeatLabel, to12h } from "@/src/lib/time";
+import { STAY_AWAKE_MODES, currentStreak } from "@/src/lib/staywake";
 
-const MISSION_ICON: Record<MissionType, keyof typeof Ionicons.glyphMap> = {
-  math: "calculator",
-  typing: "create",
-  shake: "phone-portrait",
-  random: "shuffle",
-};
-
-const MISSION_LABEL: Record<MissionType, string> = {
-  math: "Math",
-  typing: "Type",
-  shake: "Shake",
-  random: "Random",
+const MISSION_META: Record<MissionType, { icon: keyof typeof Ionicons.glyphMap; label: string }> = {
+  math: { icon: "calculator", label: "Math" },
+  typing: { icon: "create", label: "Type" },
+  shake: { icon: "phone-portrait", label: "Shake" },
+  qr: { icon: "qr-code", label: "QR Scan" },
+  step: { icon: "walk", label: "Steps" },
 };
 
 function AwakeBanner() {
@@ -55,7 +43,9 @@ function AwakeBanner() {
       </Text>
       <Text style={styles.bannerProgress}>
         Check-ins passed: {session.checkInsPassed}/{session.checkInTotal}
-        {session.misses > 0 ? `  ·  ${session.misses} miss${session.misses > 1 ? "es" : ""}` : ""}
+        {session.checkInsMissed > 0
+          ? `  ·  ${session.checkInsMissed} miss${session.checkInsMissed > 1 ? "es" : ""}`
+          : ""}
       </Text>
     </View>
   );
@@ -65,12 +55,10 @@ function AlarmCard({ alarm }: { alarm: Alarm }) {
   const { toggleAlarm, fireAlarmNow } = useAlarm();
   const router = useRouter();
   const { time, period } = to12h(alarm.hour, alarm.minute);
+  const mission = MISSION_META[alarm.missionType];
 
   return (
-    <View
-      testID={`alarm-card-${alarm.id}`}
-      style={[styles.card, alarm.enabled && styles.cardActive]}
-    >
+    <View testID={`alarm-card-${alarm.id}`} style={[styles.card, alarm.enabled && styles.cardActive]}>
       <View style={styles.cardTop}>
         <View style={styles.timeRow}>
           <Text style={[styles.time, !alarm.enabled && styles.dim]}>{time}</Text>
@@ -96,14 +84,12 @@ function AlarmCard({ alarm }: { alarm: Alarm }) {
           <Text style={styles.chipText}>{repeatLabel(alarm.repeatDays)}</Text>
         </View>
         <View style={styles.chip}>
-          <Ionicons name={MISSION_ICON[alarm.missionType]} size={13} color={colors.textSecondary} />
-          <Text style={styles.chipText}>{MISSION_LABEL[alarm.missionType]}</Text>
+          <Ionicons name={mission.icon} size={13} color={colors.textSecondary} />
+          <Text style={styles.chipText}>{mission.label}</Text>
         </View>
         <View style={styles.chip}>
-          <Ionicons name="checkmark-done" size={13} color={colors.textSecondary} />
-          <Text style={styles.chipText}>
-            {alarm.checkInCount}× / {alarm.checkInIntervalMin}m
-          </Text>
+          <Ionicons name="shield-checkmark" size={13} color={colors.textSecondary} />
+          <Text style={styles.chipText}>{STAY_AWAKE_MODES[alarm.stayAwakeMode].label}</Text>
         </View>
       </View>
 
@@ -132,9 +118,25 @@ function AlarmCard({ alarm }: { alarm: Alarm }) {
 }
 
 export default function AlarmsScreen() {
-  const { alarms, loading, streak } = useAlarm();
+  const { alarms, history, loading, meta, isPro } = useAlarm();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const streak = currentStreak(history);
+
+  // First-run onboarding redirect.
+  useEffect(() => {
+    if (!loading && !meta.onboardingDone) {
+      router.replace("/onboarding");
+    }
+  }, [loading, meta.onboardingDone, router]);
+
+  const onAdd = () => {
+    if (!isPro && alarms.length >= FREE_ALARM_LIMIT) {
+      router.push("/paywall");
+      return;
+    }
+    router.push("/set-alarm");
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
@@ -143,18 +145,23 @@ export default function AlarmsScreen() {
           <Text style={styles.brand}>STAYWAKE</Text>
           <Text style={styles.slogan}>Wake up. Stay up.</Text>
         </View>
-        {streak > 0 && (
-          <View style={styles.streakPill} testID="header-streak">
-            <Ionicons name="flame" size={16} color={colors.urgent} />
-            <Text style={styles.streakText}>{streak}</Text>
-          </View>
-        )}
+        <View style={styles.headerRight}>
+          {!isPro && (
+            <Pressable testID="header-pro-btn" onPress={() => router.push("/paywall")} style={styles.proPill}>
+              <Ionicons name="star" size={13} color={colors.black} />
+              <Text style={styles.proPillText}>PRO</Text>
+            </Pressable>
+          )}
+          {streak > 0 && (
+            <View style={styles.streakPill} testID="header-streak">
+              <Ionicons name="flame" size={16} color={colors.urgent} />
+              <Text style={styles.streakText}>{streak}</Text>
+            </View>
+          )}
+        </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <AwakeBanner />
 
         {!loading && alarms.length === 0 && (
@@ -171,14 +178,16 @@ export default function AlarmsScreen() {
           <AlarmCard key={a.id} alarm={a} />
         ))}
 
-        <View style={{ height: 100 }} />
+        {!isPro && alarms.length > 0 && (
+          <Text style={styles.limitNote}>
+            Free plan: {alarms.length}/{FREE_ALARM_LIMIT} alarms used
+          </Text>
+        )}
+
+        <View style={{ height: 110 }} />
       </ScrollView>
 
-      <Pressable
-        testID="add-alarm-fab"
-        onPress={() => router.push("/set-alarm")}
-        style={[styles.fab, { bottom: spacing.lg }]}
-      >
+      <Pressable testID="add-alarm-fab" onPress={onAdd} style={[styles.fab, { bottom: spacing.lg }]}>
         <Ionicons name="add" size={28} color={colors.black} />
         <Text style={styles.fabText}>ADD ALARM</Text>
       </Pressable>
@@ -188,24 +197,20 @@ export default function AlarmsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg },
-  header: {
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.md },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  brand: { fontFamily: fonts.black, fontSize: 34, color: colors.textPrimary, letterSpacing: -1 },
+  slogan: { fontFamily: fonts.body, fontSize: 13, color: colors.primary, letterSpacing: 0.5 },
+  proPill: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: spacing.md,
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
   },
-  brand: {
-    fontFamily: fonts.black,
-    fontSize: 34,
-    color: colors.textPrimary,
-    letterSpacing: -1,
-  },
-  slogan: {
-    fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.primary,
-    letterSpacing: 0.5,
-  },
+  proPillText: { fontFamily: fonts.extraBold, fontSize: 13, color: colors.black, letterSpacing: 1 },
   streakPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -229,20 +234,10 @@ const styles = StyleSheet.create({
   },
   bannerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
   bannerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
-  bannerTitle: {
-    fontFamily: fonts.bodyExtra,
-    fontSize: 12,
-    letterSpacing: 2,
-    color: colors.primary,
-  },
+  bannerTitle: { fontFamily: fonts.bodyExtra, fontSize: 12, letterSpacing: 2, color: colors.primary },
   bannerSub: { fontFamily: fonts.body, fontSize: 15, color: colors.textPrimary },
   bannerCountdown: { fontFamily: fonts.monoBold, color: colors.primary },
-  bannerProgress: {
-    fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
+  bannerProgress: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 4 },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -255,19 +250,9 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   timeRow: { flexDirection: "row", alignItems: "flex-end", gap: 6 },
   time: { fontFamily: fonts.black, fontSize: 56, color: colors.textPrimary, lineHeight: 58 },
-  period: {
-    fontFamily: fonts.bold,
-    fontSize: 22,
-    color: colors.textPrimary,
-    marginBottom: 8,
-  },
+  period: { fontFamily: fonts.bold, fontSize: 22, color: colors.textPrimary, marginBottom: 8 },
   dim: { color: colors.textSecondary },
-  cardLabel: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 16,
-    color: colors.textPrimary,
-    marginTop: 4,
-  },
+  cardLabel: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.textPrimary, marginTop: 4 },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: spacing.md },
   chip: {
     flexDirection: "row",
@@ -281,36 +266,17 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   chipText: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary },
-  testBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: spacing.md,
-    paddingVertical: 6,
-  },
-  cardActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: spacing.md,
-    paddingVertical: 6,
-  },
-  editBtnText: {
-    fontFamily: fonts.bodyExtra,
-    fontSize: 12,
-    letterSpacing: 1.5,
+  cardActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  testBtn: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md, paddingVertical: 6 },
+  testBtnText: { fontFamily: fonts.bodyExtra, fontSize: 12, letterSpacing: 1.5, color: colors.primary },
+  editBtn: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md, paddingVertical: 6 },
+  editBtnText: { fontFamily: fonts.bodyExtra, fontSize: 12, letterSpacing: 1.5, color: colors.textSecondary },
+  limitNote: {
+    fontFamily: fonts.body,
+    fontSize: 13,
     color: colors.textSecondary,
-  },
-  testBtnText: {
-    fontFamily: fonts.bodyExtra,
-    fontSize: 12,
-    letterSpacing: 1.5,
-    color: colors.primary,
+    textAlign: "center",
+    marginTop: spacing.xs,
   },
   empty: { alignItems: "center", paddingTop: spacing.xxl, paddingHorizontal: spacing.lg },
   emptyImg: { width: 180, height: 180, marginBottom: spacing.lg },

@@ -1,5 +1,6 @@
-export type MissionType = "math" | "typing" | "shake" | "random";
+export type MissionType = "math" | "typing" | "shake" | "qr" | "step";
 export type Difficulty = "easy" | "medium" | "hard";
+export type StayAwakeMode = "light" | "standard" | "strict";
 
 export interface Alarm {
   id: string;
@@ -9,10 +10,9 @@ export interface Alarm {
   enabled: boolean;
   repeatDays: number[]; // 0=Sun ... 6=Sat ; [] = one-time
   missionType: MissionType;
-  difficulty: Difficulty;
-  checkInCount: number;
-  checkInIntervalMin: number;
-  sound: boolean;
+  difficulty: Difficulty; // mission target / intensity
+  stayAwakeMode: StayAwakeMode;
+  sound: string; // sound id
   createdAt: string;
 }
 
@@ -29,21 +29,25 @@ export interface WakeSession {
   alarmId: string;
   label: string;
   displayTime: string;
-  // resolved (never "random") mission used to dismiss the alarm
   dismissMission: Exclude<MissionType, "random">;
   difficulty: Difficulty;
+  mode: StayAwakeMode;
   phase: SessionPhase;
   fast: boolean;
+  checkpointsMs: number[]; // offsets from missionCompletedAt
   checkInTotal: number;
   checkInsPassed: number;
-  intervalMs: number;
+  checkInsMissed: number;
+  reAlarms: number;
+  currentIndex: number;
   nextCheckInAt: number | null;
-  misses: number;
+  ringAt: number;
+  missionCompletedAt: number | null;
   cycle: number;
   startedAt: number;
 }
 
-export type MorningStatus = "in-progress" | "success" | "failed";
+export type MorningStatus = "in-progress" | "success" | "recovered" | "failed";
 
 export interface MorningRecord {
   id: string;
@@ -51,10 +55,28 @@ export interface MorningRecord {
   label: string;
   dateKey: string; // YYYY-MM-DD
   displayTime: string;
-  firedAt: string;
+  missionType: MissionType;
+  mode: StayAwakeMode;
+  scheduledAt: string;
+  ringAt: string;
+  missionCompletedAt?: string;
   completedAt?: string;
   status: MorningStatus;
   checkInTotal: number;
   checkInsPassed: number;
-  misses: number;
+  checkInsMissed: number;
+  reAlarms: number;
+  wakeScore: number;
+}
+
+export interface Settings {
+  defaultMission: MissionType;
+  defaultMode: StayAwakeMode;
+  defaultSound: string;
+  hapticsEnabled: boolean;
+}
+
+export interface AppMeta {
+  onboardingDone: boolean;
+  isPro: boolean;
 }

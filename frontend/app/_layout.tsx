@@ -66,7 +66,12 @@ export default function RootLayout() {
               }}
             >
               <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
               <Stack.Screen name="set-alarm" options={{ presentation: "modal" }} />
+              <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
+              <Stack.Screen name="privacy" />
+              <Stack.Screen name="help" />
+              <Stack.Screen name="reliability" />
               <Stack.Screen name="ring" options={{ gestureEnabled: false }} />
               <Stack.Screen name="mission" options={{ gestureEnabled: false }} />
               <Stack.Screen name="checkin" options={{ gestureEnabled: false }} />

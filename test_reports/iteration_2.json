@@ -1,0 +1,30 @@
+{
+  "summary": "Phase 1 frontend testing of StayWake completed end-to-end on mobile viewport (390x844). All new Phase 1 features verified: 3-slide ONBOARDING with correct titles ('THE 6AM TRAP', 'PROVE YOU\\'RE AWAKE', 'STAY-AWAKE CHECK-INS') → Next x3 finishes → lands on Alarms home → does NOT reappear after reload (persisted via staywake.meta.v1). Bottom TABS Alarms/Progress/Settings all navigate correctly. ALARMS HOME shows STAYWAKE header, seeded 7:00 AM Wake Up card with chips Weekdays/Math/Standard, all controls (toggle/test/edit/fab/pro-btn) functional, 'Free plan: 1/2 alarms used' note visible for non-Pro. SET ALARM modal: all 4 repeat presets work; CRITICAL day-0 (Sun) and day-6 (Sat) toggle ON independently and persist (verified active background rgb(0,229,255) vs inactive rgb(20,20,20)); preset-weekends correctly activates only day-0+day-6; mission-qr & mode-strict Pro-locked correctly open paywall; difficulty easy/medium/hard pills present. FREE LIMIT: after adding 2nd alarm, tapping add-alarm-fab opens paywall with plan-yearly/monthly/lifetime cards. PRO UNLOCK (MOCKED): paywall-continue grants Pro, returns home, Free-plan note disappears, header-pro-btn hidden, 3rd alarm allowed, mode-strict and mission-qr selectable without paywall. PROGRESS tab as Pro shows challenge-week3/streak7/total5 bars with overlay hidden; as non-Pro 'challenges-upgrade' overlay routes to paywall. SETTINGS: settings-pro-card present, link-reliability/help/privacy all open sub-screens with working 'subscreen-back'. dev-disable-pro turns Pro off and header-pro-btn re-appears on home. Zero page errors. Only non-fatal: existing 'props.pointerEvents is deprecated' RN warning (unchanged from iteration 1).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "pointerEvents prop", "issue": "Console warning 'props.pointerEvents is deprecated. Use style.pointerEvents'. Originates from a third-party lib (likely react-native-keyboard-controller/reanimated). Non-blocking, carried over from iteration 1."}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Optional) Track the third-party 'pointerEvents' deprecation warning — should self-resolve on next Expo SDK / dep bump.",
+    "(Future / Phase 2) Wire actual RevenueCat purchases — currently paywall-continue mocks Pro via setPro(true). Note the in-app demo note already reads 'Demo: unlocks instantly. Real billing connects in the native build.'"
+  ],
+  "critical_code_review_comments": [
+    "AlarmContext.tsx is ~610 lines — still under the 700 split threshold but moving up. Consider splitting session lifecycle (startSession/onDismissPassed/onCheckInPassed/onCheckInMissed/finalizeSuccess + scheduler effect) out as the app grows.",
+    "All Pro-gated controls (mission-qr, mission-step, mode-strict, premium sounds, challenges overlay, settings-pro-card, header-pro-btn, free-alarm-limit) consistently route to /paywall — gating logic centralised and verified.",
+    "DAY_LABELS index 0=Sun, 6=Sat; presetDays('weekends')=[0,6] — verified to match the data-testid expectation day-0/day-6.",
+    "All interactive elements use testID; React Native primitives (View/Text/Pressable/Switch/ScrollView/TextInput) only — no HTML primitives; styles via StyleSheet.create."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% (all Phase-1 flows passing)"},
+  "seed_data_creation": "Cleared localStorage at session start to force fresh onboarding; created a second alarm 'Test Run Alarm' via Add Alarm modal to hit Free plan 2/2 and trigger paywall. Pro state toggled on/off via paywall-continue and dev-disable-pro. AsyncStorage keys exercised: staywake.alarms.v2, staywake.meta.v1.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "To force onboarding: clear localStorage then reload. Mobile viewport 390x844 works well. Bottom tabs are reachable via page.get_by_text('Progress'/'Settings'/'Alarms', exact=True).first.click(force=True) (no testIDs on tab bar items themselves but the labels are unique). Day-toggle active state can be detected by computed backgroundColor — active = rgb(0,229,255), inactive = rgb(20,20,20). For Pro-gated controls in /set-alarm, tapping opens /paywall (detect with [data-testid=paywall-close]); close it and the underlying SetAlarm modal is still open. Successful purchase mock: paywall-continue → setPro(true) → router.back(). For full wake loop (mission/checkin/success), reuse iteration_1 strategy (read [data-testid=math-input-display].innerText, numpad-N + numpad-enter).",
+  "rca_of_issue": "N/A — no functional issues found in Phase 1."
+}

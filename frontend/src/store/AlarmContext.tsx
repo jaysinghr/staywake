@@ -11,28 +11,66 @@ import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 
 import { storage } from "@/src/utils/storage";
-import { Alarm, MorningRecord, WakeSession } from "@/src/types";
+import {
+  Alarm,
+  AppMeta,
+  MorningRecord,
+  Settings,
+  WakeSession,
+} from "@/src/types";
 import { dateKey, displayTime } from "@/src/lib/time";
-import { resolveMissionType } from "@/src/lib/missions";
-import { ALARM_SOUND_URI } from "@/src/theme";
+import { resolveDismissMission } from "@/src/lib/missions";
+import {
+  checkpointOffsets,
+  computeWakeScore,
+  STAY_AWAKE_MODES,
+} from "@/src/lib/staywake";
+import { soundById } from "@/src/lib/sounds";
 
-const ALARMS_KEY = "staywake.alarms.v1";
-const HISTORY_KEY = "staywake.history.v1";
+const ALARMS_KEY = "staywake.alarms.v2";
+const HISTORY_KEY = "staywake.history.v2";
+const SETTINGS_KEY = "staywake.settings.v1";
+const META_KEY = "staywake.meta.v1";
 
-const FAST_INTERVAL_MS = 15000; // test-run check-in window
-const FAST_RERING_MS = 6000;
+export const FREE_ALARM_LIMIT = 2;
+const FAST_RERING_GRACE = 6000;
+
+const DEFAULT_SETTINGS: Settings = {
+  defaultMission: "math",
+  defaultMode: "standard",
+  defaultSound: "classic",
+  hapticsEnabled: true,
+};
+
+const DEFAULT_META: AppMeta = { onboardingDone: false, isPro: false };
+
+const DEFAULT_ALARM: Alarm = {
+  id: "sample-wakeup",
+  label: "Wake Up",
+  hour: 7,
+  minute: 0,
+  enabled: false,
+  repeatDays: [1, 2, 3, 4, 5],
+  missionType: "math",
+  difficulty: "easy",
+  stayAwakeMode: "standard",
+  sound: "classic",
+  createdAt: new Date().toISOString(),
+};
 
 interface AlarmContextValue {
   alarms: Alarm[];
   history: MorningRecord[];
   session: WakeSession | null;
+  settings: Settings;
+  meta: AppMeta;
   loading: boolean;
+  isPro: boolean;
   addAlarm: (a: Omit<Alarm, "id" | "createdAt">) => Promise<void>;
   updateAlarm: (id: string, patch: Partial<Alarm>) => Promise<void>;
   deleteAlarm: (id: string) => Promise<void>;
   toggleAlarm: (id: string, enabled: boolean) => Promise<void>;
   getAlarm: (id: string) => Alarm | undefined;
-  // session lifecycle
   fireAlarmNow: (id: string) => void;
   beginDismissMission: () => void;
   onDismissPassed: () => void;
@@ -41,7 +79,10 @@ interface AlarmContextValue {
   onCheckInMissed: () => void;
   clearSession: () => void;
   abandonSession: () => void;
-  streak: number;
+  updateSettings: (patch: Partial<Settings>) => Promise<void>;
+  completeOnboarding: () => Promise<void>;
+  setPro: (value: boolean) => Promise<void>;
+  resetData: () => Promise<void>;
 }
 
 const AlarmContext = createContext<AlarmContextValue | null>(null);
@@ -56,78 +97,54 @@ function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function computeStreak(history: MorningRecord[]): number {
-  const successDays = new Set(
-    history.filter((h) => h.status === "success").map((h) => h.dateKey),
-  );
-  if (successDays.size === 0) return 0;
-  let streak = 0;
-  const cursor = new Date();
-  // Allow streak to count from today or yesterday
-  if (!successDays.has(dateKey(cursor))) {
-    cursor.setDate(cursor.getDate() - 1);
-    if (!successDays.has(dateKey(cursor))) return 0;
+function safeParse<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
   }
-  while (successDays.has(dateKey(cursor))) {
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
 }
-
-const DEFAULT_ALARM: Alarm = {
-  id: "sample-wakeup",
-  label: "Wake Up",
-  hour: 7,
-  minute: 0,
-  enabled: false,
-  repeatDays: [1, 2, 3, 4, 5],
-  missionType: "math",
-  difficulty: "easy",
-  checkInCount: 2,
-  checkInIntervalMin: 5,
-  sound: true,
-  createdAt: new Date().toISOString(),
-};
 
 export function AlarmProvider({ children }: { children: React.ReactNode }) {
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [history, setHistory] = useState<MorningRecord[]>([]);
   const [session, setSession] = useState<WakeSession | null>(null);
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [meta, setMeta] = useState<AppMeta>(DEFAULT_META);
   const [loading, setLoading] = useState(true);
 
   const sessionRef = useRef<WakeSession | null>(null);
   const alarmsRef = useRef<Alarm[]>([]);
   const firedKeys = useRef<Set<string>>(new Set());
   const audioRef = useRef<any>(null);
+  const audioSoundId = useRef<string>("");
   const hapticTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   sessionRef.current = session;
   alarmsRef.current = alarms;
 
-  // ---- persistence ----
+  // ---- load ----
   useEffect(() => {
     (async () => {
-      const storedAlarms = await storage.getItem<string>(ALARMS_KEY, "");
-      const storedHistory = await storage.getItem<string>(HISTORY_KEY, "");
-      let a: Alarm[] = [];
-      let h: MorningRecord[] = [];
-      try {
-        a = storedAlarms ? JSON.parse(storedAlarms) : [];
-      } catch {
-        a = [];
-      }
-      try {
-        h = storedHistory ? JSON.parse(storedHistory) : [];
-      } catch {
-        h = [];
-      }
-      if (!storedAlarms) {
+      const [aRaw, hRaw, sRaw, mRaw] = await Promise.all([
+        storage.getItem<string>(ALARMS_KEY, ""),
+        storage.getItem<string>(HISTORY_KEY, ""),
+        storage.getItem<string>(SETTINGS_KEY, ""),
+        storage.getItem<string>(META_KEY, ""),
+      ]);
+      let a = safeParse<Alarm[]>(aRaw, []);
+      const h = safeParse<MorningRecord[]>(hRaw, []);
+      const s = { ...DEFAULT_SETTINGS, ...safeParse<Partial<Settings>>(sRaw, {}) };
+      const m = { ...DEFAULT_META, ...safeParse<Partial<AppMeta>>(mRaw, {}) };
+      if (!aRaw) {
         a = [DEFAULT_ALARM];
         await storage.setItem(ALARMS_KEY, JSON.stringify(a));
       }
       setAlarms(a);
       setHistory(h);
+      setSettings(s);
+      setMeta(m);
       setLoading(false);
     })();
   }, []);
@@ -137,59 +154,73 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     await storage.setItem(ALARMS_KEY, JSON.stringify(next));
   }, []);
 
-  const persistHistory = useCallback(async (next: MorningRecord[]) => {
-    setHistory(next);
-    await storage.setItem(HISTORY_KEY, JSON.stringify(next));
+  const writeHistory = useCallback((next: MorningRecord[]) => {
+    storage.setItem(HISTORY_KEY, JSON.stringify(next));
   }, []);
 
   const upsertRecord = useCallback(
     (record: MorningRecord) => {
       setHistory((prev) => {
         const idx = prev.findIndex((r) => r.id === record.id);
-        let next: MorningRecord[];
-        if (idx >= 0) {
-          next = [...prev];
-          next[idx] = record;
-        } else {
-          next = [record, ...prev];
-        }
-        storage.setItem(HISTORY_KEY, JSON.stringify(next));
+        const next = idx >= 0 ? [...prev] : [record, ...prev];
+        if (idx >= 0) next[idx] = record;
+        writeHistory(next);
         return next;
       });
     },
-    [],
+    [writeHistory],
+  );
+
+  const patchRecord = useCallback(
+    (id: string, patch: Partial<MorningRecord>) => {
+      setHistory((prev) => {
+        const next = prev.map((r) => (r.id === id ? { ...r, ...patch } : r));
+        writeHistory(next);
+        return next;
+      });
+    },
+    [writeHistory],
   );
 
   // ---- audio + haptics ----
-  const startAlarmFx = useCallback(async () => {
-    // Haptics loop
-    if (!hapticTimer.current) {
-      const buzz = () => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(
-          () => {},
-        );
-      };
-      buzz();
-      hapticTimer.current = setInterval(buzz, 1200);
-    }
-    // Looping alarm sound
-    try {
-      const { createAudioPlayer, setAudioModeAsync } = await import("expo-audio");
+  const startAlarmFx = useCallback(
+    async (soundId: string) => {
+      if (settings.hapticsEnabled && !hapticTimer.current) {
+        const buzz = () =>
+          Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Warning,
+          ).catch(() => {});
+        buzz();
+        hapticTimer.current = setInterval(buzz, 1200);
+      }
       try {
-        await setAudioModeAsync({ playsInSilentMode: true } as any);
+        const { createAudioPlayer, setAudioModeAsync } = await import("expo-audio");
+        try {
+          await setAudioModeAsync({ playsInSilentMode: true } as any);
+        } catch {
+          // ignore
+        }
+        if (audioRef.current && audioSoundId.current !== soundId) {
+          try {
+            audioRef.current.remove();
+          } catch {
+            // ignore
+          }
+          audioRef.current = null;
+        }
+        if (!audioRef.current) {
+          audioRef.current = createAudioPlayer({ uri: soundById(soundId).uri });
+          audioRef.current.loop = true;
+          audioSoundId.current = soundId;
+        }
+        audioRef.current.seekTo?.(0);
+        audioRef.current.play();
       } catch {
-        // ignore
+        // sound optional
       }
-      if (!audioRef.current) {
-        audioRef.current = createAudioPlayer({ uri: ALARM_SOUND_URI });
-        audioRef.current.loop = true;
-      }
-      audioRef.current.seekTo?.(0);
-      audioRef.current.play();
-    } catch {
-      // sound optional — haptics + visuals carry the alarm
-    }
-  }, []);
+    },
+    [settings.hapticsEnabled],
+  );
 
   const stopAlarmFx = useCallback(() => {
     if (hapticTimer.current) {
@@ -203,19 +234,19 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // React to phase to drive alarm FX
   useEffect(() => {
     const ringing =
       session?.phase === "ringing" || session?.phase === "checkin-ringing";
+    const alarm = session ? alarmsRef.current.find((x) => x.id === session.alarmId) : null;
     if (ringing) {
-      startAlarmFx();
+      startAlarmFx(alarm?.sound ?? settings.defaultSound);
     } else {
       stopAlarmFx();
     }
     return () => {
       if (!session) stopAlarmFx();
     };
-  }, [session?.phase, session?.cycle, startAlarmFx, stopAlarmFx, session]);
+  }, [session?.phase, session?.cycle, startAlarmFx, stopAlarmFx, session, settings.defaultSound]);
 
   // ---- scheduler ----
   useEffect(() => {
@@ -235,13 +266,11 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
         }
         return;
       }
-      // no active session → check alarms
       const now = new Date();
-      if (now.getSeconds() >= 4) return; // only fire in first seconds of the minute
+      if (now.getSeconds() >= 4) return;
       for (const alarm of alarmsRef.current) {
         if (!alarm.enabled) continue;
-        if (alarm.hour !== now.getHours() || alarm.minute !== now.getMinutes())
-          continue;
+        if (alarm.hour !== now.getHours() || alarm.minute !== now.getMinutes()) continue;
         const repeats = alarm.repeatDays.length > 0;
         if (repeats && !alarm.repeatDays.includes(now.getDay())) continue;
         const key = `${alarm.id}-${dateKey(now)}-${alarm.hour}-${alarm.minute}`;
@@ -249,7 +278,6 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
         firedKeys.current.add(key);
         startSession(alarm, false);
         if (!repeats) {
-          // disable one-time alarm after firing
           persistAlarms(
             alarmsRef.current.map((x) =>
               x.id === alarm.id ? { ...x, enabled: false } : x,
@@ -267,41 +295,50 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
   // ---- session lifecycle ----
   const startSession = useCallback(
     (alarm: Alarm, fast: boolean) => {
-      const dismiss = resolveMissionType(alarm.missionType);
-      const intervalMs = fast
-        ? FAST_INTERVAL_MS
-        : alarm.checkInIntervalMin * 60000;
+      const dismiss = resolveDismissMission(alarm.missionType);
+      const offsets = checkpointOffsets(alarm.stayAwakeMode, fast);
+      const total = offsets.length;
+      const now = Date.now();
       const record: MorningRecord = {
         id: uid(),
         alarmId: alarm.id,
         label: alarm.label,
         dateKey: dateKey(),
         displayTime: displayTime(alarm.hour, alarm.minute),
-        firedAt: new Date().toISOString(),
+        missionType: alarm.missionType,
+        mode: alarm.stayAwakeMode,
+        scheduledAt: new Date().toISOString(),
+        ringAt: new Date().toISOString(),
         status: "in-progress",
-        checkInTotal: alarm.checkInCount,
+        checkInTotal: total,
         checkInsPassed: 0,
-        misses: 0,
+        checkInsMissed: 0,
+        reAlarms: 0,
+        wakeScore: 0,
       };
       upsertRecord(record);
-      const newSession: WakeSession = {
+      setSession({
         recordId: record.id,
         alarmId: alarm.id,
         label: alarm.label,
         displayTime: displayTime(alarm.hour, alarm.minute),
         dismissMission: dismiss,
         difficulty: alarm.difficulty,
+        mode: alarm.stayAwakeMode,
         phase: "ringing",
         fast,
-        checkInTotal: alarm.checkInCount,
+        checkpointsMs: offsets,
+        checkInTotal: total,
         checkInsPassed: 0,
-        intervalMs,
+        checkInsMissed: 0,
+        reAlarms: 0,
+        currentIndex: 0,
         nextCheckInAt: null,
-        misses: 0,
+        ringAt: now,
+        missionCompletedAt: null,
         cycle: 0,
-        startedAt: Date.now(),
-      };
-      setSession(newSession);
+        startedAt: now,
+      });
     },
     [upsertRecord],
   );
@@ -315,104 +352,97 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
   );
 
   const beginDismissMission = useCallback(() => {
-    setSession((prev) =>
-      prev ? { ...prev, phase: "dismiss-mission" } : prev,
-    );
+    setSession((prev) => (prev ? { ...prev, phase: "dismiss-mission" } : prev));
   }, []);
+
+  const finalizeSuccess = useCallback((s: WakeSession) => {
+    const ringToMissionSec = s.missionCompletedAt
+      ? Math.round((s.missionCompletedAt - s.ringAt) / 1000)
+      : 0;
+    const score = computeWakeScore({
+      ringToMissionSec,
+      checkInsMissed: s.checkInsMissed,
+      reAlarms: s.reAlarms,
+    });
+    const status = s.checkInsMissed > 0 || s.reAlarms > 0 ? "recovered" : "success";
+    patchRecord(s.recordId, {
+      status,
+      completedAt: new Date().toISOString(),
+      checkInsPassed: s.checkInTotal,
+      checkInsMissed: s.checkInsMissed,
+      reAlarms: s.reAlarms,
+      wakeScore: score,
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [patchRecord]);
 
   const onDismissPassed = useCallback(() => {
     setSession((prev) => {
       if (!prev) return prev;
+      const completedAt = Date.now();
+      patchRecord(prev.recordId, {
+        missionCompletedAt: new Date().toISOString(),
+      });
       if (prev.checkInTotal <= 0) {
-        // no check-ins required → success immediately
-        finalizeSuccess(prev);
-        return { ...prev, phase: "success" };
-      }
-      return {
-        ...prev,
-        phase: "awake",
-        nextCheckInAt: Date.now() + prev.intervalMs,
-      };
-    });
-  }, []);
-
-  const beginCheckInMission = useCallback(() => {
-    setSession((prev) =>
-      prev ? { ...prev, phase: "checkin-mission" } : prev,
-    );
-  }, []);
-
-  const finalizeSuccess = useCallback(
-    (s: WakeSession) => {
-      setHistory((prev) => {
-        const next = prev.map((r) =>
-          r.id === s.recordId
-            ? {
-                ...r,
-                status: "success" as const,
-                completedAt: new Date().toISOString(),
-                checkInsPassed: s.checkInTotal,
-                misses: s.misses,
-              }
-            : r,
-        );
-        storage.setItem(HISTORY_KEY, JSON.stringify(next));
-        return next;
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
-        () => {},
-      );
-    },
-    [],
-  );
-
-  const onCheckInPassed = useCallback(() => {
-    setSession((prev) => {
-      if (!prev) return prev;
-      const passed = prev.checkInsPassed + 1;
-      // update record progress
-      setHistory((h) => {
-        const next = h.map((r) =>
-          r.id === prev.recordId ? { ...r, checkInsPassed: passed } : r,
-        );
-        storage.setItem(HISTORY_KEY, JSON.stringify(next));
-        return next;
-      });
-      if (passed >= prev.checkInTotal) {
-        const done = { ...prev, checkInsPassed: passed };
+        const done = { ...prev, missionCompletedAt: completedAt };
         finalizeSuccess(done);
         return { ...done, phase: "success" };
       }
       return {
         ...prev,
-        checkInsPassed: passed,
+        missionCompletedAt: completedAt,
         phase: "awake",
-        nextCheckInAt: Date.now() + prev.intervalMs,
+        currentIndex: 0,
+        nextCheckInAt: completedAt + prev.checkpointsMs[0],
       };
     });
-  }, [finalizeSuccess]);
+  }, [finalizeSuccess, patchRecord]);
+
+  const beginCheckInMission = useCallback(() => {
+    setSession((prev) => (prev ? { ...prev, phase: "checkin-mission" } : prev));
+  }, []);
+
+  const onCheckInPassed = useCallback(() => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const passed = prev.checkInsPassed + 1;
+      const nextIndex = prev.currentIndex + 1;
+      patchRecord(prev.recordId, { checkInsPassed: passed });
+      if (nextIndex >= prev.checkInTotal) {
+        const done = { ...prev, checkInsPassed: passed };
+        finalizeSuccess(done);
+        return { ...done, phase: "success" };
+      }
+      const base = prev.missionCompletedAt ?? Date.now();
+      return {
+        ...prev,
+        checkInsPassed: passed,
+        currentIndex: nextIndex,
+        phase: "awake",
+        nextCheckInAt: base + prev.checkpointsMs[nextIndex],
+      };
+    });
+  }, [finalizeSuccess, patchRecord]);
 
   const onCheckInMissed = useCallback(() => {
     setSession((prev) => {
       if (!prev) return prev;
-      const misses = prev.misses + 1;
-      setHistory((h) => {
-        const next = h.map((r) =>
-          r.id === prev.recordId ? { ...r, misses } : r,
-        );
-        storage.setItem(HISTORY_KEY, JSON.stringify(next));
-        return next;
-      });
+      const missed = prev.checkInsMissed + 1;
+      const reAlarms = prev.reAlarms + 1;
+      patchRecord(prev.recordId, { checkInsMissed: missed, reAlarms });
       return {
         ...prev,
-        misses,
+        checkInsMissed: missed,
+        reAlarms,
         phase: "ringing",
         cycle: prev.cycle + 1,
         nextCheckInAt: null,
       };
     });
-  }, []);
+  }, [patchRecord]);
 
+  // After a missed check-in re-ring, dismissing returns to the SAME pending
+  // check-in shortly after.
   const clearSession = useCallback(() => {
     stopAlarmFx();
     setSession(null);
@@ -420,21 +450,27 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
 
   const abandonSession = useCallback(() => {
     setSession((prev) => {
-      if (prev) {
-        setHistory((h) => {
-          const next = h.map((r) =>
-            r.id === prev.recordId
-              ? { ...r, status: "failed" as const }
-              : r,
-          );
-          storage.setItem(HISTORY_KEY, JSON.stringify(next));
-          return next;
-        });
-      }
+      if (prev) patchRecord(prev.recordId, { status: "failed" });
       return null;
     });
     stopAlarmFx();
-  }, [stopAlarmFx]);
+  }, [stopAlarmFx, patchRecord]);
+
+  // override onDismissPassed when this dismiss was a re-ring (cycle>0): resume
+  // the pending checkpoint quickly instead of advancing.
+  const onDismissPassedWrapped = useCallback(() => {
+    const prev = sessionRef.current;
+    if (prev && prev.cycle > 0 && prev.missionCompletedAt) {
+      const grace = prev.fast ? FAST_RERING_GRACE : 60000;
+      setSession({
+        ...prev,
+        phase: "awake",
+        nextCheckInAt: Date.now() + grace,
+      });
+      return;
+    }
+    onDismissPassed();
+  }, [onDismissPassed]);
 
   // ---- alarm CRUD ----
   const addAlarm = useCallback(
@@ -463,14 +499,14 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
 
   const toggleAlarm = useCallback(
     async (id: string, enabled: boolean) => {
-      if (Platform.OS !== "web") {
+      if (Platform.OS !== "web" && settings.hapticsEnabled) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       }
       await persistAlarms(
         alarmsRef.current.map((x) => (x.id === id ? { ...x, enabled } : x)),
       );
     },
-    [persistAlarms],
+    [persistAlarms, settings.hapticsEnabled],
   );
 
   const getAlarm = useCallback(
@@ -478,28 +514,97 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const streak = useMemo(() => computeStreak(history), [history]);
+  // ---- settings / meta ----
+  const updateSettings = useCallback(async (patch: Partial<Settings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      storage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
-  const value: AlarmContextValue = {
-    alarms,
-    history,
-    session,
-    loading,
-    addAlarm,
-    updateAlarm,
-    deleteAlarm,
-    toggleAlarm,
-    getAlarm,
-    fireAlarmNow,
-    beginDismissMission,
-    onDismissPassed,
-    beginCheckInMission,
-    onCheckInPassed,
-    onCheckInMissed,
-    clearSession,
-    abandonSession,
-    streak,
-  };
+  const completeOnboarding = useCallback(async () => {
+    setMeta((prev) => {
+      const next = { ...prev, onboardingDone: true };
+      storage.setItem(META_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const setPro = useCallback(async (value: boolean) => {
+    setMeta((prev) => {
+      const next = { ...prev, isPro: value };
+      storage.setItem(META_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const resetData = useCallback(async () => {
+    await Promise.all([
+      storage.removeItem(ALARMS_KEY),
+      storage.removeItem(HISTORY_KEY),
+    ]);
+    firedKeys.current.clear();
+    await persistAlarms([DEFAULT_ALARM]);
+    setHistory([]);
+    writeHistory([]);
+  }, [persistAlarms, writeHistory]);
+
+  const value: AlarmContextValue = useMemo(
+    () => ({
+      alarms,
+      history,
+      session,
+      settings,
+      meta,
+      loading,
+      isPro: meta.isPro,
+      addAlarm,
+      updateAlarm,
+      deleteAlarm,
+      toggleAlarm,
+      getAlarm,
+      fireAlarmNow,
+      beginDismissMission,
+      onDismissPassed: onDismissPassedWrapped,
+      beginCheckInMission,
+      onCheckInPassed,
+      onCheckInMissed,
+      clearSession,
+      abandonSession,
+      updateSettings,
+      completeOnboarding,
+      setPro,
+      resetData,
+    }),
+    [
+      alarms,
+      history,
+      session,
+      settings,
+      meta,
+      loading,
+      addAlarm,
+      updateAlarm,
+      deleteAlarm,
+      toggleAlarm,
+      getAlarm,
+      fireAlarmNow,
+      beginDismissMission,
+      onDismissPassedWrapped,
+      beginCheckInMission,
+      onCheckInPassed,
+      onCheckInMissed,
+      clearSession,
+      abandonSession,
+      updateSettings,
+      completeOnboarding,
+      setPro,
+      resetData,
+    ],
+  );
 
   return <AlarmContext.Provider value={value}>{children}</AlarmContext.Provider>;
 }
+
+export { STAY_AWAKE_MODES };

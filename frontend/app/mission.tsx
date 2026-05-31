@@ -49,7 +49,7 @@ export default function MissionScreen() {
         </Text>
         {isCheckin && (
           <Text style={styles.sub}>
-            Check-in {session.checkInsPassed + 1} of {session.checkInTotal}
+            Check-in {session.currentIndex + 1} of {session.checkInTotal}
           </Text>
         )}
       </View>
