@@ -189,14 +189,7 @@ export default function SetAlarmScreen() {
                   <Text style={[styles.modeLabel, active && { color: colors.primary }]}>{cfg.label}</Text>
                   <Text style={styles.modeDesc}>{cfg.desc}</Text>
                 </View>
-                {locked ? (
-                  <View style={styles.proTag}>
-                    <Ionicons name="lock-closed" size={11} color={colors.primary} />
-                    <Text style={styles.proTagText}>PRO</Text>
-                  </View>
-                ) : (
-                  <Ionicons name={active ? "radio-button-on" : "radio-button-off"} size={22} color={active ? colors.primary : colors.textSecondary} />
-                )}
+                <Ionicons name={active ? "radio-button-on" : "radio-button-off"} size={22} color={active ? colors.primary : colors.textSecondary} />
               </Pressable>
             );
           })}
@@ -258,8 +251,6 @@ const styles = StyleSheet.create({
   modeLeft: { flex: 1 },
   modeLabel: { fontFamily: fonts.bold, fontSize: 18, color: colors.textPrimary },
   modeDesc: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 2 },
-  proTag: { flexDirection: "row", alignItems: "center", gap: 3, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
-  proTagText: { fontFamily: fonts.bodyExtra, fontSize: 10, letterSpacing: 1, color: colors.primary },
   deleteBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: spacing.xl, paddingVertical: spacing.md },
   deleteText: { fontFamily: fonts.bodyExtra, fontSize: 14, letterSpacing: 1, color: colors.urgent },
   saveBar: { paddingTop: spacing.sm, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border },
