@@ -12,7 +12,6 @@ import { SOUNDS } from "@/src/lib/sounds";
 
 const MISSIONS: { id: MissionType; label: string }[] = [
   { id: "math", label: "Math" },
-  { id: "typing", label: "Type" },
   { id: "shake", label: "Shake" },
 ];
 const MODES: StayAwakeMode[] = ["light", "standard", "strict"];

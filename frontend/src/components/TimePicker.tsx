@@ -3,9 +3,10 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { colors, fonts } from "@/src/theme";
 
-const ITEM_HEIGHT = 56;
-const VISIBLE = 5;
+const ITEM_HEIGHT = 50;
+const VISIBLE = 3;
 const PICKER_HEIGHT = ITEM_HEIGHT * VISIBLE;
+const PAD = ITEM_HEIGHT * Math.floor(VISIBLE / 2);
 
 interface ColumnProps {
   data: string[];
@@ -17,12 +18,10 @@ interface ColumnProps {
 
 function WheelColumn({ data, selectedIndex, onSelect, testID, width }: ColumnProps) {
   const ref = useRef<ScrollView>(null);
-  const isMounted = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => {
       ref.current?.scrollTo({ y: selectedIndex * ITEM_HEIGHT, animated: false });
-      isMounted.current = true;
     }, 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -32,11 +31,12 @@ function WheelColumn({ data, selectedIndex, onSelect, testID, width }: ColumnPro
     <ScrollView
       ref={ref}
       testID={testID}
+      nestedScrollEnabled
       showsVerticalScrollIndicator={false}
       snapToInterval={ITEM_HEIGHT}
       decelerationRate="fast"
       style={{ width, height: PICKER_HEIGHT }}
-      contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
+      contentContainerStyle={{ paddingVertical: PAD }}
       onMomentumScrollEnd={(e) => {
         const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
         const clamped = Math.max(0, Math.min(data.length - 1, idx));
@@ -47,9 +47,7 @@ function WheelColumn({ data, selectedIndex, onSelect, testID, width }: ColumnPro
         const active = i === selectedIndex;
         return (
           <View key={`${label}-${i}`} style={styles.item}>
-            <Text style={[styles.itemText, active ? styles.active : styles.inactive]}>
-              {label}
-            </Text>
+            <Text style={[styles.itemText, active ? styles.active : styles.inactive]}>{label}</Text>
           </View>
         );
       })}
@@ -83,70 +81,30 @@ export default function TimePicker({ hour, minute, onChange }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.centerBand} pointerEvents="none" />
-      <WheelColumn
-        testID="time-picker-hour"
-        width={70}
-        data={HOURS}
-        selectedIndex={hourIndex}
-        onSelect={(i) => emit(i, minute, period)}
-      />
+      <WheelColumn testID="time-picker-hour" width={64} data={HOURS} selectedIndex={hourIndex} onSelect={(i) => emit(i, minute, period)} />
       <Text style={styles.colon}>:</Text>
-      <WheelColumn
-        testID="time-picker-minute"
-        width={70}
-        data={MINUTES}
-        selectedIndex={minute}
-        onSelect={(i) => emit(hourIndex, i, period)}
-      />
-      <WheelColumn
-        testID="time-picker-period"
-        width={70}
-        data={PERIODS}
-        selectedIndex={period}
-        onSelect={(i) => emit(hourIndex, minute, i)}
-      />
+      <WheelColumn testID="time-picker-minute" width={64} data={MINUTES} selectedIndex={minute} onSelect={(i) => emit(hourIndex, i, period)} />
+      <WheelColumn testID="time-picker-period" width={64} data={PERIODS} selectedIndex={period} onSelect={(i) => emit(hourIndex, minute, i)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    height: PICKER_HEIGHT,
-  },
+  container: { flexDirection: "row", alignItems: "center", justifyContent: "center", height: PICKER_HEIGHT },
   centerBand: {
     position: "absolute",
     left: 0,
     right: 0,
-    top: ITEM_HEIGHT * 2,
+    top: PAD,
     height: ITEM_HEIGHT,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: colors.primary,
     backgroundColor: colors.surfaceHighlight,
   },
-  item: {
-    height: ITEM_HEIGHT,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  itemText: {
-    fontFamily: fonts.black,
-    fontSize: 40,
-  },
-  active: {
-    color: colors.textPrimary,
-  },
-  inactive: {
-    color: colors.textSecondary,
-    opacity: 0.4,
-  },
-  colon: {
-    fontFamily: fonts.black,
-    fontSize: 40,
-    color: colors.textSecondary,
-    marginHorizontal: 2,
-  },
+  item: { height: ITEM_HEIGHT, alignItems: "center", justifyContent: "center" },
+  itemText: { fontFamily: fonts.black, fontSize: 34 },
+  active: { color: colors.textPrimary },
+  inactive: { color: colors.textSecondary, opacity: 0.4 },
+  colon: { fontFamily: fonts.black, fontSize: 34, color: colors.textSecondary, marginHorizontal: 2 },
 });

@@ -17,7 +17,6 @@ import Button from "@/src/components/Button";
 
 const MISSIONS: { key: MissionType; label: string; icon: keyof typeof Ionicons.glyphMap; pro: boolean; build?: boolean }[] = [
   { key: "math", label: "Math", icon: "calculator", pro: false },
-  { key: "typing", label: "Type", icon: "create", pro: false },
   { key: "shake", label: "Shake", icon: "phone-portrait", pro: false },
   { key: "qr", label: "QR Scan", icon: "qr-code", pro: true, build: true },
   { key: "step", label: "Steps", icon: "walk", pro: true, build: true },
@@ -119,12 +118,12 @@ export default function SetAlarmScreen() {
         <View style={{ width: 28 }} />
       </View>
 
-      <KeyboardAwareScrollView bottomOffset={90} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        <View style={styles.pickerWrap}>
-          <TimePicker hour={hour} minute={minute} onChange={(h, m) => { setHour(h); setMinute(m); }} />
-        </View>
+      <View style={styles.pickerWrap}>
+        <TimePicker hour={hour} minute={minute} onChange={(h, m) => { setHour(h); setMinute(m); }} />
+      </View>
 
-        <Text style={styles.sectionLabel}>LABEL</Text>
+      <KeyboardAwareScrollView bottomOffset={90} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+        <Text style={[styles.sectionLabel, { marginTop: 0 }]}>LABEL</Text>
         <TextInput
           testID="alarm-label-input"
           value={label}

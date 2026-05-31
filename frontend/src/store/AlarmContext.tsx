@@ -19,7 +19,7 @@ import {
   WakeSession,
 } from "@/src/types";
 import { dateKey, displayTime } from "@/src/lib/time";
-import { resolveDismissMission } from "@/src/lib/missions";
+import { configureNotifications, syncAlarmNotifications } from "@/src/lib/notifications";
 import {
   checkpointOffsets,
   computeWakeScore,
@@ -146,12 +146,14 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
       setSettings(s);
       setMeta(m);
       setLoading(false);
+      configureNotifications().then(() => syncAlarmNotifications(a));
     })();
   }, []);
 
   const persistAlarms = useCallback(async (next: Alarm[]) => {
     setAlarms(next);
     await storage.setItem(ALARMS_KEY, JSON.stringify(next));
+    syncAlarmNotifications(next);
   }, []);
 
   const writeHistory = useCallback((next: MorningRecord[]) => {
@@ -295,7 +297,7 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
   // ---- session lifecycle ----
   const startSession = useCallback(
     (alarm: Alarm, fast: boolean) => {
-      const dismiss = resolveDismissMission(alarm.missionType);
+      const dismiss = alarm.missionType;
       const offsets = checkpointOffsets(alarm.stayAwakeMode, fast);
       const total = offsets.length;
       const now = Date.now();
@@ -350,6 +352,33 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     },
     [startSession],
   );
+
+  // When the user taps a fired alarm notification, open the ring flow.
+  useEffect(() => {
+    let sub: any;
+    let mounted = true;
+    (async () => {
+      if (Platform.OS === "web") return;
+      try {
+        const N = await import("expo-notifications");
+        if (!mounted) return;
+        sub = N.addNotificationResponseReceivedListener((resp) => {
+          const alarmId = resp?.notification?.request?.content?.data?.alarmId as
+            | string
+            | undefined;
+          if (!alarmId || sessionRef.current) return;
+          const alarm = alarmsRef.current.find((a) => a.id === alarmId);
+          if (alarm) startSession(alarm, false);
+        });
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      mounted = false;
+      sub?.remove?.();
+    };
+  }, [startSession]);
 
   const beginDismissMission = useCallback(() => {
     setSession((prev) => (prev ? { ...prev, phase: "dismiss-mission" } : prev));

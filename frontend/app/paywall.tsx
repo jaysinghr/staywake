@@ -50,7 +50,7 @@ export default function Paywall() {
         <Ionicons name="close" size={28} color={colors.textPrimary} />
       </Pressable>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 160 }}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.xl }}>
         <View style={styles.hero}>
           <View style={styles.proBadge}>
             <Ionicons name="star" size={16} color={colors.black} />
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
   planNote: { fontFamily: fonts.body, fontSize: 12, color: colors.primary, marginTop: 2 },
   activeCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xl, backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.success, borderRadius: radius.card, padding: spacing.lg },
   activeText: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.textPrimary },
-  footer: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 0, gap: spacing.sm, backgroundColor: colors.background, paddingTop: spacing.sm },
+  footer: { gap: spacing.sm, backgroundColor: colors.background, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   demoNote: { fontFamily: fonts.body, fontSize: 11, color: colors.textSecondary, textAlign: "center" },
   later: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textSecondary, textAlign: "center", paddingVertical: 6 },
 });
