@@ -16,10 +16,14 @@ A "wake-up completion system", not just an alarm: ring → complete a PROOF MISS
 - **Settings**: defaults (mission/mode/sound), haptics, Reliability guide, Help/FAQ, Privacy, restore purchases, reset data.
 - **Monetization**: Pro paywall (Yearly/Monthly/Lifetime). Free = 2 alarms + core missions + Light/Standard. Pro = unlimited alarms, Strict, QR/Step, challenges, premium sounds, analytics.
 
-## Mocked / Deferred (Phase 2 — requires native build via Publish)
-- **RevenueCat billing** — purchase is currently MOCKED (`setPro(true)` unlocks instantly). Provider chosen: RevenueCat (supports Indian developers; sells worldwide via App Store / Google Play IAP).
-- **Native alarm reliability**: AlarmManager exact alarms, foreground service, full-screen lock-screen ringing, BootReceiver restore — only run in a real build, not Expo Go / web preview.
-- **QR/barcode mission** (expo-camera) and **Step mission** (expo-sensors Pedometer) — require device build + permissions.
+## Native (implemented — activate by Publishing an Android build)
+- **Notification-based alarm scheduling** (`src/lib/notifications.ts`): Expo scheduled notifications (Android AlarmManager under the hood) + MAX-importance alarm channel, permission handling, reschedule on every alarm change, tap-to-open-ring listener. Fires when app is closed (best-effort; full lock-screen ringing needs the build).
+- **QR-scan mission** (expo-camera) and **Step mission** (expo-sensors Pedometer) with full permission flow + "Open Settings" + non-dead-end fallbacks. On web preview they fall back to `qr-simulate` / `step-tap-fallback` so the flow is testable.
+- app.json: camera/sensors/notifications plugins + Android permissions (CAMERA, ACTIVITY_RECOGNITION, SCHEDULE_EXACT_ALARM, USE_FULL_SCREEN_INTENT, RECEIVE_BOOT_COMPLETED, POST_NOTIFICATIONS, WAKE_LOCK, VIBRATE) + iOS usage strings.
+
+## Still Mocked / Deferred (Phase 2 finish)
+- **RevenueCat billing** — purchase is MOCKED (`setPro(true)`). Needs RevenueCat API keys + App Store / Google Play product IDs, wired after a build.
+- True full-screen lock-screen ringing / boot-restore reliability can only be verified on a real device build (Publish).
 
 ## Notes
 - In-app foreground alarm loop is testable via per-alarm "TEST RUN (FAST)" (~15s check-in windows).
