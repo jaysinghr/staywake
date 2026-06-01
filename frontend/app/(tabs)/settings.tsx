@@ -73,12 +73,14 @@ export default function SettingsScreen() {
           onPress={() => (isPro ? null : router.push("/paywall"))}
           style={[styles.proCard, isPro && styles.proCardActive]}
         >
-          <View style={styles.proIcon}>
-            <Ionicons name="star" size={22} color={colors.black} />
+          <View style={[styles.proIcon, { backgroundColor: isPro ? colors.surface : "rgba(0,0,0,0.15)" }]}>
+            <Ionicons name="star" size={22} color={isPro ? colors.success : colors.black} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.proTitle}>{isPro ? "StayWake Pro Active" : "Upgrade to StayWake Pro"}</Text>
-            <Text style={styles.proSub}>
+            <Text style={[styles.proTitle, { color: isPro ? colors.textPrimary : colors.black }]}>
+              {isPro ? "StayWake Pro Active" : "Upgrade to StayWake Pro"}
+            </Text>
+            <Text style={[styles.proSub, { color: isPro ? colors.textSecondary : "rgba(0,0,0,0.7)" }]}>
               {isPro ? "All features unlocked. Thank you!" : "Unlimited alarms, Strict mode, QR & Step missions, analytics"}
             </Text>
           </View>

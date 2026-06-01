@@ -83,7 +83,7 @@ export default function ProgressScreen() {
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statNum, { color: colors.textPrimary }]}>{totalReAlarms}</Text>
-            <Text style={styles.statLabel}>RE-ALARMS</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit>RE-ALARMS</Text>
           </View>
         </View>
 
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   statGrid: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },
   statBox: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.card, padding: spacing.lg },
   statNum: { fontFamily: fonts.black, fontSize: 36 },
-  statLabel: { fontFamily: fonts.bodyExtra, fontSize: 11, letterSpacing: 1.5, color: colors.textSecondary, marginTop: 2 },
+  statLabel: { fontFamily: fonts.bodyExtra, fontSize: 11, letterSpacing: 0.5, color: colors.textSecondary, marginTop: 2 },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.sm, marginBottom: spacing.md },
   sectionTitle: { fontFamily: fonts.extraBold, fontSize: 18, letterSpacing: 1, color: colors.textPrimary, marginTop: spacing.sm, marginBottom: spacing.md },
   lockTag: { flexDirection: "row", alignItems: "center", gap: 3, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },

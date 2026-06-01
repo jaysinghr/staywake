@@ -81,11 +81,16 @@ function MathMission({ difficulty, accent, onSolved }: Omit<Props, "type">) {
     }
   };
 
-  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "back", "0", "enter"];
+  const numRows = [
+    ["1", "2", "3"],
+    ["4", "5", "6"],
+    ["7", "8", "9"],
+    ["back", "0", "enter"],
+  ];
 
   return (
-    <View style={styles.flex}>
-      <View style={styles.missionBody}>
+    <View style={styles.mathContainer}>
+      <View style={styles.mathBody}>
         <Text style={styles.label}>SOLVE TO PROVE YOU&apos;RE AWAKE</Text>
         <Animated.View style={[styles.challengeBox, { borderColor: accent }, animStyle]}>
           <Text style={styles.challengeText}>{challenge.prompt}</Text>
@@ -93,25 +98,29 @@ function MathMission({ difficulty, accent, onSolved }: Omit<Props, "type">) {
         </Animated.View>
       </View>
       <View style={styles.numpad}>
-        {keys.map((k) => {
-          if (k === "back")
-            return (
-              <Pressable key={k} testID="numpad-back" style={styles.key} onPress={back}>
-                <Ionicons name="backspace-outline" size={28} color={colors.textPrimary} />
-              </Pressable>
-            );
-          if (k === "enter")
-            return (
-              <Pressable key={k} testID="numpad-enter" style={[styles.key, { backgroundColor: accent }]} onPress={submit}>
-                <Ionicons name="checkmark" size={32} color={colors.black} />
-              </Pressable>
-            );
-          return (
-            <Pressable key={k} testID={`numpad-${k}`} style={styles.key} onPress={() => press(k)}>
-              <Text style={styles.keyText}>{k}</Text>
-            </Pressable>
-          );
-        })}
+        {numRows.map((row, ri) => (
+          <View key={ri} style={styles.numRow}>
+            {row.map((k) => {
+              if (k === "back")
+                return (
+                  <Pressable key={k} testID="numpad-back" style={styles.key} onPress={back}>
+                    <Ionicons name="backspace-outline" size={26} color={colors.textPrimary} />
+                  </Pressable>
+                );
+              if (k === "enter")
+                return (
+                  <Pressable key={k} testID="numpad-enter" style={[styles.key, { backgroundColor: accent }]} onPress={submit}>
+                    <Ionicons name="checkmark" size={30} color={colors.black} />
+                  </Pressable>
+                );
+              return (
+                <Pressable key={k} testID={`numpad-${k}`} style={styles.key} onPress={() => press(k)}>
+                  <Text style={styles.keyText}>{k}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -417,12 +426,15 @@ const styles = StyleSheet.create({
   missionBody: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   center: { alignItems: "center", justifyContent: "center" },
   label: { fontFamily: fonts.bodyExtra, fontSize: 12, letterSpacing: 2, color: colors.textSecondary, textTransform: "uppercase", textAlign: "center", marginBottom: spacing.lg },
-  challengeBox: { borderWidth: 2, borderRadius: radius.card, backgroundColor: colors.surface, paddingVertical: spacing.xl, alignItems: "center" },
-  challengeText: { fontFamily: fonts.monoBold, fontSize: 44, color: colors.textPrimary },
-  answerText: { fontFamily: fonts.monoBold, fontSize: 52, marginTop: spacing.sm },
-  numpad: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: spacing.md, paddingBottom: spacing.md },
-  key: { width: "31.5%", margin: "0.92%", height: 64, borderRadius: radius.button, backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
-  keyText: { fontFamily: fonts.bold, fontSize: 28, color: colors.textPrimary },
+  mathContainer: { flex: 1, width: "100%", justifyContent: "space-between" },
+  mathBody: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  challengeBox: { borderWidth: 2, borderRadius: radius.card, backgroundColor: colors.surface, paddingVertical: spacing.md, alignItems: "center", marginTop: spacing.sm },
+  challengeText: { fontFamily: fonts.monoBold, fontSize: 38, color: colors.textPrimary },
+  answerText: { fontFamily: fonts.monoBold, fontSize: 46, marginTop: spacing.xs },
+  numpad: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm },
+  numRow: { flexDirection: "row", gap: spacing.sm },
+  key: { flex: 1, height: 58, borderRadius: radius.button, backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  keyText: { fontFamily: fonts.bold, fontSize: 26, color: colors.textPrimary },
   phraseBox: { borderWidth: 2, borderRadius: radius.card, backgroundColor: colors.surface, padding: spacing.lg, marginBottom: spacing.lg },
   phraseText: { fontFamily: fonts.monoBold, fontSize: 24, color: colors.textPrimary, textAlign: "center", letterSpacing: 1 },
   textInput: { borderWidth: 2, borderRadius: radius.input, backgroundColor: colors.background, color: colors.textPrimary, fontFamily: fonts.mono, fontSize: 20, padding: spacing.md, minHeight: 64, letterSpacing: 1 },
