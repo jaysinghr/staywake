@@ -26,7 +26,7 @@ import {
   computeWakeScore,
   STAY_AWAKE_MODES,
 } from "@/src/lib/staywake";
-import { soundById } from "@/src/lib/sounds";
+import { soundModule } from "@/src/lib/sounds";
 
 const ALARMS_KEY = "staywake.alarms.v2";
 const HISTORY_KEY = "staywake.history.v2";
@@ -227,7 +227,7 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
           audioRef.current = null;
         }
         if (!audioRef.current) {
-          audioRef.current = createAudioPlayer({ uri: soundById(soundId).uri });
+          audioRef.current = createAudioPlayer(soundModule(soundId));
           audioRef.current.loop = true;
           audioSoundId.current = soundId;
         }

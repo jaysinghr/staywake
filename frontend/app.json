@@ -66,7 +66,19 @@
           "motionPermission": "Count your steps to prove you're up and out of bed"
         }
       ],
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/classic.mp3",
+            "./assets/sounds/morning.mp3",
+            "./assets/sounds/digital.mp3",
+            "./assets/sounds/rooster.mp3",
+            "./assets/sounds/siren.mp3",
+            "./assets/sounds/critical.mp3"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

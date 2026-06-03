@@ -1,9 +1,15 @@
 import { Platform } from "react-native";
 import { Alarm, Settings } from "../types";
 import { displayTime } from "./time";
+import { SOUNDS, soundFile } from "./sounds";
 
-const CHANNEL_ID = "staywake-alarms";
 const BEDTIME_CHANNEL_ID = "staywake-bedtime";
+
+// One Android channel per sound — channel sound is fixed at creation, so this
+// lets each alarm ring with its chosen tone even when the app is killed.
+function alarmChannelId(soundId: string) {
+  return `staywake-alarm-${soundId}`;
+}
 
 type NotifModule = typeof import("expo-notifications");
 let cached: NotifModule | null = null;
@@ -33,15 +39,17 @@ export async function configureNotifications() {
       }),
     });
     if (Platform.OS === "android") {
-      await N.setNotificationChannelAsync(CHANNEL_ID, {
-        name: "Alarms",
-        importance: N.AndroidImportance.MAX,
-        sound: "default",
-        vibrationPattern: [0, 400, 400, 400],
-        enableVibrate: true,
-        bypassDnd: true,
-        lockscreenVisibility: N.AndroidNotificationVisibility.PUBLIC,
-      });
+      for (const s of SOUNDS) {
+        await N.setNotificationChannelAsync(alarmChannelId(s.id), {
+          name: `Alarm · ${s.label}`,
+          importance: N.AndroidImportance.MAX,
+          sound: s.file,
+          vibrationPattern: [0, 400, 400, 400],
+          enableVibrate: true,
+          bypassDnd: true,
+          lockscreenVisibility: N.AndroidNotificationVisibility.PUBLIC,
+        });
+      }
       await N.setNotificationChannelAsync(BEDTIME_CHANNEL_ID, {
         name: "Bedtime reminders",
         importance: N.AndroidImportance.DEFAULT,
@@ -77,12 +85,12 @@ export async function scheduleTestAlarm(seconds = 60): Promise<boolean> {
   const granted = await ensureNotificationPermission();
   if (!granted) return false;
   try {
-    const androidExtra = Platform.OS === "android" ? { channelId: CHANNEL_ID } : {};
+    const androidExtra = Platform.OS === "android" ? { channelId: alarmChannelId("classic") } : {};
     await N.scheduleNotificationAsync({
       content: {
         title: "⏰ StayWake test alarm",
         body: "If you can see and hear this, your alarms will fire. Tap to open.",
-        sound: "default",
+        sound: soundFile("classic"),
         data: { test: true },
         priority: N.AndroidNotificationPriority?.MAX,
       },
@@ -170,11 +178,12 @@ export async function syncNotifications(alarms: Alarm[], settings: Settings) {
       const content: any = {
         title: `⏰ ${a.label || "Wake up"}`,
         body: "Open StayWake and complete your mission to stop the alarm.",
-        sound: "default",
+        sound: soundFile(a.sound), // iOS uses this; Android uses the channel sound
         data: { alarmId: a.id },
         priority: N.AndroidNotificationPriority?.MAX,
       };
-      const androidExtra = Platform.OS === "android" ? { channelId: CHANNEL_ID } : {};
+      const androidExtra =
+        Platform.OS === "android" ? { channelId: alarmChannelId(a.sound) } : {};
 
       if (a.repeatDays.length === 0) {
         await N.scheduleNotificationAsync({
