@@ -11,7 +11,16 @@ import {
   computeChallenges,
   currentStreak,
   weeklyWins,
+  wakeTimeTrend,
 } from "@/src/lib/staywake";
+import { to12h } from "@/src/lib/time";
+
+function formatClock(mins: number) {
+  const h = Math.floor(mins / 60) % 24;
+  const m = ((mins % 60) + 60) % 60;
+  const { time, period } = to12h(h, m);
+  return `${time} ${period}`;
+}
 
 function scoreColor(score: number) {
   if (score >= 90) return colors.success;
@@ -38,6 +47,7 @@ export default function ProgressScreen() {
     : 0;
   const totalReAlarms = history.reduce((s, h) => s + h.reAlarms, 0);
   const challenges = computeChallenges(history);
+  const trend = wakeTimeTrend(history);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
@@ -86,6 +96,34 @@ export default function ProgressScreen() {
             <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit>RE-ALARMS</Text>
           </View>
         </View>
+
+        {trend.avgMinutes != null && (
+          <View style={styles.wakeCard} testID="wake-trend">
+            <View style={styles.wakeLeft}>
+              <Text style={styles.wakeLabel}>AVG WAKE TIME</Text>
+              <Text style={styles.wakeTime}>{formatClock(trend.avgMinutes)}</Text>
+              <Text style={styles.wakeMeta}>last {trend.sampleSize} morning{trend.sampleSize === 1 ? "" : "s"}</Text>
+            </View>
+            {trend.deltaMin != null && Math.abs(trend.deltaMin) >= 1 ? (
+              <View style={styles.wakeTrendBox}>
+                <Ionicons
+                  name={trend.deltaMin > 0 ? "trending-up" : "trending-down"}
+                  size={20}
+                  color={trend.deltaMin > 0 ? colors.success : "#FFB020"}
+                />
+                <Text style={[styles.wakeDelta, { color: trend.deltaMin > 0 ? colors.success : "#FFB020" }]}>
+                  {Math.abs(trend.deltaMin)} min
+                </Text>
+                <Text style={styles.wakeDeltaSub}>{trend.deltaMin > 0 ? "earlier" : "later"} than before</Text>
+              </View>
+            ) : (
+              <View style={styles.wakeTrendBox}>
+                <Ionicons name="remove" size={20} color={colors.textSecondary} />
+                <Text style={styles.wakeDeltaSub}>steady</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>CHALLENGES</Text>
@@ -178,6 +216,14 @@ const styles = StyleSheet.create({
   statBox: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.card, padding: spacing.lg },
   statNum: { fontFamily: fonts.black, fontSize: 36 },
   statLabel: { fontFamily: fonts.bodyExtra, fontSize: 11, letterSpacing: 0.5, color: colors.textSecondary, marginTop: 2 },
+  wakeCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.card, padding: spacing.lg, marginBottom: spacing.md },
+  wakeLeft: { flex: 1 },
+  wakeLabel: { fontFamily: fonts.bodyExtra, fontSize: 11, letterSpacing: 1, color: colors.textSecondary },
+  wakeTime: { fontFamily: fonts.black, fontSize: 34, color: colors.textPrimary, marginTop: 2 },
+  wakeMeta: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  wakeTrendBox: { alignItems: "center", minWidth: 96 },
+  wakeDelta: { fontFamily: fonts.black, fontSize: 22 },
+  wakeDeltaSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.sm, marginBottom: spacing.md },
   sectionTitle: { fontFamily: fonts.extraBold, fontSize: 18, letterSpacing: 1, color: colors.textPrimary, marginTop: spacing.sm, marginBottom: spacing.md },
   lockTag: { flexDirection: "row", alignItems: "center", gap: 3, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },

@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { ImageBackground, StyleSheet, Text, View } from "react-native";
+import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,7 +16,7 @@ import { colors, fonts, media, spacing } from "@/src/theme";
 import Button from "@/src/components/Button";
 
 export default function RingScreen() {
-  const { session, beginDismissMission } = useAlarm();
+  const { session, beginDismissMission, requestSnooze } = useAlarm();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const pulse = useSharedValue(0);
@@ -43,7 +43,10 @@ export default function RingScreen() {
 
   if (!session) return null;
 
-  const isReRing = session.cycle > 0;
+  // A re-ring after a missed check-in resumes a completed mission; a re-ring
+  // after a snooze has no completion yet.
+  const isMissedCheckIn = session.cycle > 0 && !!session.missionCompletedAt;
+  const isSnoozeOver = session.cycle > 0 && !session.missionCompletedAt;
 
   return (
     <ImageBackground source={{ uri: media.alarmRingingBg }} style={styles.bg}>
@@ -53,7 +56,11 @@ export default function RingScreen() {
           <View style={styles.alarmTag}>
             <Ionicons name="alarm" size={16} color={colors.urgent} />
             <Text style={styles.alarmTagText}>
-              {isReRing ? "MISSED CHECK-IN · ALARM AGAIN" : "WAKE UP NOW"}
+              {isMissedCheckIn
+                ? "MISSED CHECK-IN · ALARM AGAIN"
+                : isSnoozeOver
+                  ? "SNOOZE OVER · WAKE UP"
+                  : "WAKE UP NOW"}
             </Text>
           </View>
           <Animated.Text style={[styles.time, timeStyle]} testID="ring-time">
@@ -64,7 +71,7 @@ export default function RingScreen() {
 
         <View style={styles.bottom}>
           <Text style={styles.hint}>
-            No snooze. Complete a {session.dismissMission} mission to stop the alarm.
+            Complete a {session.dismissMission} mission to stop the alarm.
           </Text>
           <Button
             title="Stop Alarm"
@@ -73,6 +80,16 @@ export default function RingScreen() {
             size="lg"
             onPress={beginDismissMission}
           />
+          {session.snoozesLeft > 0 ? (
+            <Pressable testID="earn-snooze-btn" onPress={requestSnooze} style={styles.snoozeBtn} hitSlop={8}>
+              <Ionicons name="moon" size={15} color={colors.textPrimary} />
+              <Text style={styles.snoozeText}>
+                EARN 4-MIN SNOOZE · SOLVE FIRST
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.noSnooze}>No snooze left — get up.</Text>
+          )}
         </View>
       </View>
     </ImageBackground>
@@ -110,5 +127,26 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: "center",
     opacity: 0.85,
+  },
+  snoozeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: spacing.md,
+    opacity: 0.8,
+  },
+  snoozeText: {
+    fontFamily: fonts.bodyExtra,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    color: colors.textPrimary,
+  },
+  noSnooze: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: "center",
+    paddingVertical: spacing.sm,
   },
 });

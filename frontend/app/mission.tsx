@@ -52,6 +52,11 @@ export default function MissionScreen() {
             Check-in {session.currentIndex + 1} of {session.checkInTotal}
           </Text>
         )}
+        {!isCheckin && session.escalated && (
+          <Text style={styles.escalated}>
+            <Ionicons name="trending-up" size={13} color={colors.urgent} /> Difficulty raised — you&apos;ve been struggling lately.
+          </Text>
+        )}
       </View>
       <MissionRunner type={type} difficulty={difficulty} accent={accent} onSolved={handleSolved} />
     </View>
@@ -79,4 +84,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   sub: { fontFamily: fonts.body, fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  escalated: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.urgent, marginTop: spacing.sm, textAlign: "center" },
 });

@@ -17,11 +17,14 @@ import Button from "@/src/components/Button";
 
 const MISSIONS: { key: MissionType; label: string; icon: keyof typeof Ionicons.glyphMap; pro: boolean; build?: boolean }[] = [
   { key: "math", label: "Math", icon: "calculator", pro: false },
+  { key: "memory", label: "Memory", icon: "grid", pro: false },
   { key: "shake", label: "Shake", icon: "phone-portrait", pro: false },
+  { key: "order", label: "Order", icon: "reorder-four", pro: true },
   { key: "qr", label: "QR Scan", icon: "qr-code", pro: true, build: true },
   { key: "step", label: "Steps", icon: "walk", pro: true, build: true },
 ];
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
+const EMOJIS = ["⏰", "💪", "🏃", "☀️", "💼", "📚", "🧘", "🚀", "🔥", "🐓"];
 const PRESETS: { key: RepeatPreset; label: string }[] = [
   { key: "once", label: "Once" },
   { key: "everyday", label: "Every day" },
@@ -48,6 +51,7 @@ export default function SetAlarmScreen() {
   const [hour, setHour] = useState(existing?.hour ?? 7);
   const [minute, setMinute] = useState(existing?.minute ?? 0);
   const [label, setLabel] = useState(existing?.label ?? "Wake Up");
+  const [emoji, setEmoji] = useState(existing?.emoji ?? EMOJIS[0]);
   const [repeatDays, setRepeatDays] = useState<number[]>(existing?.repeatDays ?? [1, 2, 3, 4, 5]);
   const [missionType, setMissionType] = useState<MissionType>(existing?.missionType ?? settings.defaultMission);
   const [difficulty, setDifficulty] = useState<Difficulty>(existing?.difficulty ?? "medium");
@@ -87,6 +91,7 @@ export default function SetAlarmScreen() {
   const onSave = async () => {
     const data = {
       label: label.trim() || "Alarm",
+      emoji,
       hour,
       minute,
       enabled: true,
@@ -123,7 +128,21 @@ export default function SetAlarmScreen() {
       </View>
 
       <KeyboardAwareScrollView bottomOffset={90} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        <Text style={[styles.sectionLabel, { marginTop: 0 }]}>LABEL</Text>
+        <Text style={[styles.sectionLabel, { marginTop: 0 }]}>ICON</Text>
+        <View style={styles.emojiRow}>
+          {EMOJIS.map((e) => (
+            <Pressable
+              key={e}
+              testID={`emoji-${e}`}
+              onPress={() => setEmoji(e)}
+              style={[styles.emojiBtn, emoji === e && styles.emojiBtnActive]}
+            >
+              <Text style={styles.emojiText}>{e}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={styles.sectionLabel}>LABEL</Text>
         <TextInput
           testID="alarm-label-input"
           value={label}
@@ -232,6 +251,10 @@ const styles = StyleSheet.create({
   pickerWrap: { alignItems: "center", marginBottom: spacing.md },
   sectionLabel: { fontFamily: fonts.bodyExtra, fontSize: 12, letterSpacing: 2, color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm },
   input: { backgroundColor: colors.background, borderWidth: 2, borderColor: colors.border, borderRadius: radius.input, color: colors.textPrimary, fontFamily: fonts.body, fontSize: 16, padding: spacing.md },
+  emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  emojiBtn: { width: 48, height: 48, borderRadius: radius.button, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  emojiBtnActive: { borderColor: colors.primary, backgroundColor: colors.surfaceHighlight },
+  emojiText: { fontSize: 24 },
   presetRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
   daysRow: { flexDirection: "row", justifyContent: "space-between" },
   dayBtn: { width: 42, height: 42, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },

@@ -9,6 +9,8 @@ import { MissionType, StayAwakeMode } from "@/src/types";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { STAY_AWAKE_MODES } from "@/src/lib/staywake";
 import { SOUNDS } from "@/src/lib/sounds";
+import { to12h } from "@/src/lib/time";
+import TimePicker from "@/src/components/TimePicker";
 
 const MISSIONS: { id: MissionType; label: string }[] = [
   { id: "math", label: "Math" },
@@ -136,6 +138,39 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <Text style={styles.sectionLabel}>BEDTIME WIND-DOWN</Text>
+        <View style={styles.bedtimeCard}>
+          <View style={styles.bedtimeRow}>
+            <View style={styles.toggleLeft}>
+              <Ionicons name="moon" size={20} color={colors.primary} />
+              <View>
+                <Text style={styles.toggleText}>Bedtime reminder</Text>
+                <Text style={styles.bedtimeSub}>
+                  {settings.bedtimeEnabled
+                    ? `Nudge every night at ${to12h(settings.bedtimeHour, settings.bedtimeMinute).time} ${to12h(settings.bedtimeHour, settings.bedtimeMinute).period}`
+                    : "A nightly nudge so mornings get easier"}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              testID="settings-bedtime"
+              value={settings.bedtimeEnabled}
+              onValueChange={(v) => updateSettings({ bedtimeEnabled: v })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.textPrimary}
+            />
+          </View>
+          {settings.bedtimeEnabled && (
+            <View style={styles.bedtimePicker}>
+              <TimePicker
+                hour={settings.bedtimeHour}
+                minute={settings.bedtimeMinute}
+                onChange={(h, m) => updateSettings({ bedtimeHour: h, bedtimeMinute: m })}
+              />
+            </View>
+          )}
+        </View>
+
         <Text style={styles.sectionLabel}>RELIABILITY & HELP</Text>
         <View style={styles.card}>
           <LinkRow testID="link-reliability" icon="shield-checkmark" label="Reliability & permissions" onPress={() => router.push("/reliability")} />
@@ -213,6 +248,10 @@ const styles = StyleSheet.create({
   },
   toggleLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
   toggleText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textPrimary },
+  bedtimeCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.card, overflow: "hidden" },
+  bedtimeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: spacing.md },
+  bedtimeSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginTop: 2, maxWidth: 200 },
+  bedtimePicker: { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: spacing.md, alignItems: "center" },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.card, overflow: "hidden" },
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
   linkText: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textPrimary },

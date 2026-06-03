@@ -19,8 +19,9 @@ import {
   WakeSession,
 } from "@/src/types";
 import { dateKey, displayTime } from "@/src/lib/time";
-import { configureNotifications, syncAlarmNotifications } from "@/src/lib/notifications";
+import { configureNotifications, syncNotifications } from "@/src/lib/notifications";
 import {
+  adjustedDifficulty,
   checkpointOffsets,
   computeWakeScore,
   STAY_AWAKE_MODES,
@@ -34,12 +35,19 @@ const META_KEY = "staywake.meta.v1";
 
 export const FREE_ALARM_LIMIT = 2;
 const FAST_RERING_GRACE = 6000;
+// Earn-snooze: one short snooze per session, granted only after the mission.
+const SNOOZE_PER_SESSION = 1;
+const SNOOZE_MS = 4 * 60000;
+const SNOOZE_MS_FAST = 8000;
 
 const DEFAULT_SETTINGS: Settings = {
   defaultMission: "math",
   defaultMode: "standard",
   defaultSound: "classic",
   hapticsEnabled: true,
+  bedtimeEnabled: false,
+  bedtimeHour: 22,
+  bedtimeMinute: 30,
 };
 
 const DEFAULT_META: AppMeta = { onboardingDone: false, isPro: false };
@@ -47,6 +55,7 @@ const DEFAULT_META: AppMeta = { onboardingDone: false, isPro: false };
 const DEFAULT_ALARM: Alarm = {
   id: "sample-wakeup",
   label: "Wake Up",
+  emoji: "⏰",
   hour: 7,
   minute: 0,
   enabled: false,
@@ -73,6 +82,8 @@ interface AlarmContextValue {
   getAlarm: (id: string) => Alarm | undefined;
   fireAlarmNow: (id: string) => void;
   beginDismissMission: () => void;
+  requestSnooze: () => void;
+  endSnoozeEarly: () => void;
   onDismissPassed: () => void;
   beginCheckInMission: () => void;
   onCheckInPassed: () => void;
@@ -116,13 +127,18 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
 
   const sessionRef = useRef<WakeSession | null>(null);
   const alarmsRef = useRef<Alarm[]>([]);
+  const historyRef = useRef<MorningRecord[]>([]);
+  const settingsRef = useRef<Settings>(DEFAULT_SETTINGS);
   const firedKeys = useRef<Set<string>>(new Set());
   const audioRef = useRef<any>(null);
   const audioSoundId = useRef<string>("");
   const hapticTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const volumeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   sessionRef.current = session;
   alarmsRef.current = alarms;
+  historyRef.current = history;
+  settingsRef.current = settings;
 
   // ---- load ----
   useEffect(() => {
@@ -146,14 +162,14 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
       setSettings(s);
       setMeta(m);
       setLoading(false);
-      configureNotifications().then(() => syncAlarmNotifications(a));
+      configureNotifications().then(() => syncNotifications(a, s));
     })();
   }, []);
 
   const persistAlarms = useCallback(async (next: Alarm[]) => {
     setAlarms(next);
     await storage.setItem(ALARMS_KEY, JSON.stringify(next));
-    syncAlarmNotifications(next);
+    syncNotifications(next, settingsRef.current);
   }, []);
 
   const writeHistory = useCallback((next: MorningRecord[]) => {
@@ -216,7 +232,31 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
           audioSoundId.current = soundId;
         }
         audioRef.current.seekTo?.(0);
+        // Escalate volume: gentle start (30%) ramping to full over ~25s so it
+        // wakes heavy sleepers without jolting light ones.
+        if (volumeTimer.current) {
+          clearInterval(volumeTimer.current);
+          volumeTimer.current = null;
+        }
+        let vol = 0.3;
+        try {
+          audioRef.current.volume = vol;
+        } catch {
+          // some platforms ignore volume; full-volume loop still rings
+        }
         audioRef.current.play();
+        volumeTimer.current = setInterval(() => {
+          vol = Math.min(1, vol + 0.07);
+          try {
+            if (audioRef.current) audioRef.current.volume = vol;
+          } catch {
+            // ignore
+          }
+          if (vol >= 1 && volumeTimer.current) {
+            clearInterval(volumeTimer.current);
+            volumeTimer.current = null;
+          }
+        }, 2000);
       } catch {
         // sound optional
       }
@@ -228,6 +268,10 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     if (hapticTimer.current) {
       clearInterval(hapticTimer.current);
       hapticTimer.current = null;
+    }
+    if (volumeTimer.current) {
+      clearInterval(volumeTimer.current);
+      volumeTimer.current = null;
     }
     try {
       audioRef.current?.pause();
@@ -266,6 +310,23 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
               : prev,
           );
         }
+        if (
+          s.phase === "snoozed" &&
+          s.snoozeUntil &&
+          Date.now() >= s.snoozeUntil
+        ) {
+          setSession((prev) =>
+            prev && prev.phase === "snoozed"
+              ? {
+                  ...prev,
+                  phase: "ringing",
+                  cycle: prev.cycle + 1,
+                  snoozeUntil: null,
+                  ringAt: Date.now(),
+                }
+              : prev,
+          );
+        }
         return;
       }
       const now = new Date();
@@ -298,6 +359,11 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
   const startSession = useCallback(
     (alarm: Alarm, fast: boolean) => {
       const dismiss = alarm.missionType;
+      const { difficulty: effDifficulty, escalated } = adjustedDifficulty(
+        alarm.difficulty,
+        historyRef.current,
+        alarm.id,
+      );
       const offsets = checkpointOffsets(alarm.stayAwakeMode, fast);
       const total = offsets.length;
       const now = Date.now();
@@ -316,6 +382,7 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
         checkInsPassed: 0,
         checkInsMissed: 0,
         reAlarms: 0,
+        snoozesUsed: 0,
         wakeScore: 0,
       };
       upsertRecord(record);
@@ -325,7 +392,8 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
         label: alarm.label,
         displayTime: displayTime(alarm.hour, alarm.minute),
         dismissMission: dismiss,
-        difficulty: alarm.difficulty,
+        difficulty: effDifficulty,
+        escalated,
         mode: alarm.stayAwakeMode,
         phase: "ringing",
         fast,
@@ -340,6 +408,10 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
         missionCompletedAt: null,
         cycle: 0,
         startedAt: now,
+        snoozesLeft: SNOOZE_PER_SESSION,
+        snoozeIntent: false,
+        snoozeUntil: null,
+        snoozesUsed: 0,
       });
     },
     [upsertRecord],
@@ -384,6 +456,25 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     setSession((prev) => (prev ? { ...prev, phase: "dismiss-mission" } : prev));
   }, []);
 
+  // Earn-snooze: route through the dismiss mission with snoozeIntent set. The
+  // mission still has to be solved before the snooze is granted.
+  const requestSnooze = useCallback(() => {
+    setSession((prev) =>
+      prev && prev.snoozesLeft > 0
+        ? { ...prev, phase: "dismiss-mission", snoozeIntent: true }
+        : prev,
+    );
+  }, []);
+
+  // End an active snooze early and ring again immediately.
+  const endSnoozeEarly = useCallback(() => {
+    setSession((prev) =>
+      prev && prev.phase === "snoozed"
+        ? { ...prev, phase: "ringing", cycle: prev.cycle + 1, snoozeUntil: null, ringAt: Date.now() }
+        : prev,
+    );
+  }, []);
+
   const finalizeSuccess = useCallback((s: WakeSession) => {
     const ringToMissionSec = s.missionCompletedAt
       ? Math.round((s.missionCompletedAt - s.ringAt) / 1000)
@@ -392,14 +483,19 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
       ringToMissionSec,
       checkInsMissed: s.checkInsMissed,
       reAlarms: s.reAlarms,
+      snoozesUsed: s.snoozesUsed,
     });
-    const status = s.checkInsMissed > 0 || s.reAlarms > 0 ? "recovered" : "success";
+    const status =
+      s.checkInsMissed > 0 || s.reAlarms > 0 || s.snoozesUsed > 0
+        ? "recovered"
+        : "success";
     patchRecord(s.recordId, {
       status,
       completedAt: new Date().toISOString(),
       checkInsPassed: s.checkInTotal,
       checkInsMissed: s.checkInsMissed,
       reAlarms: s.reAlarms,
+      snoozesUsed: s.snoozesUsed,
       wakeScore: score,
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -489,6 +585,21 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
   // the pending checkpoint quickly instead of advancing.
   const onDismissPassedWrapped = useCallback(() => {
     const prev = sessionRef.current;
+    // Snooze was earned by solving this mission: grant it now (once per session).
+    if (prev && prev.snoozeIntent && prev.snoozesLeft > 0) {
+      const snoozeMs = prev.fast ? SNOOZE_MS_FAST : SNOOZE_MS;
+      const used = prev.snoozesUsed + 1;
+      patchRecord(prev.recordId, { snoozesUsed: used });
+      setSession({
+        ...prev,
+        phase: "snoozed",
+        snoozeIntent: false,
+        snoozesLeft: prev.snoozesLeft - 1,
+        snoozesUsed: used,
+        snoozeUntil: Date.now() + snoozeMs,
+      });
+      return;
+    }
     if (prev && prev.cycle > 0 && prev.missionCompletedAt) {
       const grace = prev.fast ? FAST_RERING_GRACE : 60000;
       setSession({
@@ -499,7 +610,7 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     onDismissPassed();
-  }, [onDismissPassed]);
+  }, [onDismissPassed, patchRecord]);
 
   // ---- alarm CRUD ----
   const addAlarm = useCallback(
@@ -548,6 +659,14 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
       storage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      // Bedtime reminder depends on settings — reschedule when these change.
+      if (
+        patch.bedtimeEnabled !== undefined ||
+        patch.bedtimeHour !== undefined ||
+        patch.bedtimeMinute !== undefined
+      ) {
+        syncNotifications(alarmsRef.current, next);
+      }
       return next;
     });
   }, []);
@@ -595,6 +714,8 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
       getAlarm,
       fireAlarmNow,
       beginDismissMission,
+      requestSnooze,
+      endSnoozeEarly,
       onDismissPassed: onDismissPassedWrapped,
       beginCheckInMission,
       onCheckInPassed,
@@ -620,6 +741,8 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
       getAlarm,
       fireAlarmNow,
       beginDismissMission,
+      requestSnooze,
+      endSnoozeEarly,
       onDismissPassedWrapped,
       beginCheckInMission,
       onCheckInPassed,

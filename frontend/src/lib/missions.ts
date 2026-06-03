@@ -52,6 +52,33 @@ export function shakeTarget(difficulty: Difficulty): number {
   return 40;
 }
 
+// Memory (Simon-style): how many tiles light up in the sequence to repeat.
+export function memoryLength(difficulty: Difficulty): number {
+  if (difficulty === "easy") return 3;
+  if (difficulty === "medium") return 4;
+  return 5;
+}
+
+export function genSequence(length: number, tileCount: number): number[] {
+  return Array.from({ length }, () => rnd(0, tileCount - 1));
+}
+
+// Order: tap scrambled numbers 1..N in ascending order.
+export function orderCount(difficulty: Difficulty): number {
+  if (difficulty === "easy") return 5;
+  if (difficulty === "medium") return 7;
+  return 9;
+}
+
+export function shuffledRange(n: number): number[] {
+  const arr = Array.from({ length: n }, (_, i) => i + 1);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rnd(0, i);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 // Resolve a mission to one runnable in-app. QR/Step require a device build,
 // so in preview they gracefully fall back to math.
 export function resolveDismissMission(

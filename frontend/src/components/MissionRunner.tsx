@@ -13,10 +13,18 @@ import { KeyboardStickyView } from "react-native-keyboard-controller";
 
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Difficulty } from "@/src/types";
-import { genMath, genPhrase, shakeTarget } from "@/src/lib/missions";
+import {
+  genMath,
+  genPhrase,
+  genSequence,
+  memoryLength,
+  orderCount,
+  shakeTarget,
+  shuffledRange,
+} from "@/src/lib/missions";
 import Button from "./Button";
 
-type MissionType = "math" | "typing" | "shake" | "qr" | "step";
+type MissionType = "math" | "typing" | "shake" | "qr" | "step" | "memory" | "order";
 
 interface Props {
   type: MissionType;
@@ -40,6 +48,8 @@ export default function MissionRunner({ type, difficulty, accent = colors.primar
   if (type === "shake") return <ShakeMission difficulty={difficulty} accent={accent} onSolved={onSolved} />;
   if (type === "qr") return <QRMission difficulty={difficulty} accent={accent} onSolved={onSolved} />;
   if (type === "step") return <StepMission difficulty={difficulty} accent={accent} onSolved={onSolved} />;
+  if (type === "memory") return <MemoryMission difficulty={difficulty} accent={accent} onSolved={onSolved} />;
+  if (type === "order") return <OrderMission difficulty={difficulty} accent={accent} onSolved={onSolved} />;
   return <MathMission difficulty={difficulty} accent={accent} onSolved={onSolved} />;
 }
 
@@ -421,6 +431,135 @@ function StepMission({ difficulty, accent, onSolved }: Omit<Props, "type">) {
   );
 }
 
+/* ----------------------------- MEMORY ----------------------------- */
+const MEMORY_TILES = 6;
+
+function MemoryMission({ difficulty, accent, onSolved }: Omit<Props, "type">) {
+  const [sequence, setSequence] = useState(() =>
+    genSequence(memoryLength(difficulty), MEMORY_TILES),
+  );
+  const [phase, setPhase] = useState<"watch" | "input">("watch");
+  const [active, setActive] = useState(-1);
+  const [userPos, setUserPos] = useState(0);
+  const solvedRef = useRef(false);
+
+  // Play back the sequence, then hand control to the user.
+  useEffect(() => {
+    setPhase("watch");
+    setUserPos(0);
+    setActive(-1);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    sequence.forEach((tile, i) => {
+      timers.push(setTimeout(() => setActive(tile), 700 * i + 400));
+      timers.push(setTimeout(() => setActive(-1), 700 * i + 850));
+    });
+    timers.push(setTimeout(() => setPhase("input"), 700 * sequence.length + 400));
+    return () => timers.forEach(clearTimeout);
+  }, [sequence]);
+
+  const onTile = (i: number) => {
+    if (phase !== "input" || solvedRef.current) return;
+    if (i === sequence[userPos]) {
+      buzz();
+      const next = userPos + 1;
+      setActive(i);
+      setTimeout(() => setActive(-1), 150);
+      if (next >= sequence.length) {
+        solvedRef.current = true;
+        buzz(Haptics.ImpactFeedbackStyle.Heavy);
+        setTimeout(() => onSolved(), 250);
+        return;
+      }
+      setUserPos(next);
+    } else {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      setSequence(genSequence(memoryLength(difficulty), MEMORY_TILES));
+    }
+  };
+
+  return (
+    <View style={styles.flex}>
+      <View style={[styles.missionBody, styles.center]}>
+        <Text style={styles.label}>{phase === "watch" ? "WATCH THE SEQUENCE" : "REPEAT IT"}</Text>
+        <View style={styles.tileGrid}>
+          {Array.from({ length: MEMORY_TILES }, (_, i) => (
+            <Pressable
+              key={i}
+              testID={`memory-tile-${i}`}
+              onPress={() => onTile(i)}
+              disabled={phase !== "input"}
+              style={[
+                styles.memTile,
+                { borderColor: active === i ? accent : colors.border },
+                active === i && { backgroundColor: accent },
+              ]}
+            />
+          ))}
+        </View>
+        <Text style={[styles.bigCount, { color: accent, fontSize: 28, marginTop: spacing.lg }]} testID="memory-progress">
+          {userPos}/{sequence.length}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/* ----------------------------- ORDER ----------------------------- */
+function OrderMission({ difficulty, accent, onSolved }: Omit<Props, "type">) {
+  const total = useMemo(() => orderCount(difficulty), [difficulty]);
+  const [nums, setNums] = useState(() => shuffledRange(total));
+  const [next, setNext] = useState(1);
+  const [done, setDone] = useState<number[]>([]);
+  const solvedRef = useRef(false);
+
+  const onTile = (v: number) => {
+    if (solvedRef.current || done.includes(v)) return;
+    if (v === next) {
+      buzz();
+      setDone((d) => [...d, v]);
+      if (v === total) {
+        solvedRef.current = true;
+        buzz(Haptics.ImpactFeedbackStyle.Heavy);
+        setTimeout(() => onSolved(), 250);
+        return;
+      }
+      setNext(v + 1);
+    } else {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      setDone([]);
+      setNext(1);
+      setNums(shuffledRange(total));
+    }
+  };
+
+  return (
+    <View style={styles.flex}>
+      <View style={[styles.missionBody, styles.center]}>
+        <Text style={styles.label}>TAP 1 TO {total} IN ORDER</Text>
+        <Text style={[styles.bigCount, { color: accent, fontSize: 22, marginBottom: spacing.lg }]} testID="order-next">
+          NEXT: {next}
+        </Text>
+        <View style={styles.orderGrid}>
+          {nums.map((v) => {
+            const tapped = done.includes(v);
+            return (
+              <Pressable
+                key={v}
+                testID={`order-tile-${v}`}
+                onPress={() => onTile(v)}
+                disabled={tapped}
+                style={[styles.orderTile, tapped && { borderColor: accent, backgroundColor: colors.surfaceHighlight, opacity: 0.4 }]}
+              >
+                <Text style={[styles.orderText, tapped && { color: accent }]}>{v}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1, width: "100%" },
   missionBody: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
@@ -444,6 +583,11 @@ const styles = StyleSheet.create({
   progressFill: { height: "100%", borderRadius: radius.pill },
   tapBtn: { marginTop: spacing.xl, borderWidth: 2, borderRadius: radius.pill, width: 120, height: 120, alignItems: "center", justifyContent: "center" },
   tapBtnText: { fontFamily: fonts.black, fontSize: 24 },
+  tileGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.md, width: 260 },
+  memTile: { width: 110, height: 110, borderRadius: radius.card, borderWidth: 2, backgroundColor: colors.surface },
+  orderGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm, width: 300 },
+  orderTile: { width: 88, height: 70, borderRadius: radius.button, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  orderText: { fontFamily: fonts.black, fontSize: 30, color: colors.textPrimary },
   cameraWrap: { width: "100%", aspectRatio: 1, borderRadius: radius.card, overflow: "hidden", borderWidth: 2, backgroundColor: colors.black },
   scanFrame: { position: "absolute", top: "18%", left: "18%", right: "18%", bottom: "18%", borderWidth: 3, borderRadius: radius.card },
   hint: { fontFamily: fonts.body, fontSize: 14, color: colors.textSecondary, textAlign: "center", marginTop: spacing.md, lineHeight: 21, paddingHorizontal: spacing.md },

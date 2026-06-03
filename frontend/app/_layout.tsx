@@ -73,6 +73,7 @@ export default function RootLayout() {
               <Stack.Screen name="help" />
               <Stack.Screen name="reliability" />
               <Stack.Screen name="ring" options={{ gestureEnabled: false }} />
+              <Stack.Screen name="snooze" options={{ gestureEnabled: false }} />
               <Stack.Screen name="mission" options={{ gestureEnabled: false }} />
               <Stack.Screen name="checkin" options={{ gestureEnabled: false }} />
               <Stack.Screen name="success" options={{ gestureEnabled: false }} />

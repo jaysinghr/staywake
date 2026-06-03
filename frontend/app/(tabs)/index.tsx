@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -8,8 +8,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAlarm, FREE_ALARM_LIMIT } from "@/src/store/AlarmContext";
 import { Alarm, MissionType } from "@/src/types";
 import { colors, fonts, media, radius, spacing } from "@/src/theme";
-import { repeatLabel, to12h } from "@/src/lib/time";
-import { STAY_AWAKE_MODES, currentStreak } from "@/src/lib/staywake";
+import { repeatLabel, to12h, nextOccurrenceMs, humanCountdown } from "@/src/lib/time";
+import { STAY_AWAKE_MODES, currentStreak, wonToday } from "@/src/lib/staywake";
 
 const MISSION_META: Record<MissionType, { icon: keyof typeof Ionicons.glyphMap; label: string }> = {
   math: { icon: "calculator", label: "Math" },
@@ -17,6 +17,8 @@ const MISSION_META: Record<MissionType, { icon: keyof typeof Ionicons.glyphMap; 
   shake: { icon: "phone-portrait", label: "Shake" },
   qr: { icon: "qr-code", label: "QR Scan" },
   step: { icon: "walk", label: "Steps" },
+  memory: { icon: "grid", label: "Memory" },
+  order: { icon: "reorder-four", label: "Order" },
 };
 
 function AwakeBanner() {
@@ -51,6 +53,55 @@ function AwakeBanner() {
   );
 }
 
+function StreakStatus() {
+  const { alarms, history } = useAlarm();
+  const [, setTick] = useState(0);
+
+  // Keep the countdown roughly fresh.
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const streak = currentStreak(history);
+  const won = wonToday(history);
+
+  const nextMs = useMemo(() => {
+    const enabled = alarms.filter((a) => a.enabled);
+    if (enabled.length === 0) return null;
+    return Math.min(...enabled.map((a) => nextOccurrenceMs(a.hour, a.minute, a.repeatDays)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alarms]);
+
+  if (history.length === 0) return null;
+
+  let tint = colors.primary;
+  let title = "START A NEW STREAK";
+  let sub = nextMs != null ? `Win your next wake-up — alarm in ${humanCountdown(nextMs)}.` : "Set an alarm and win tomorrow.";
+
+  if (streak > 0 && !won) {
+    tint = colors.urgent;
+    title = `${streak}-DAY STREAK ON THE LINE`;
+    sub = nextMs != null ? `Don't break it. Next alarm in ${humanCountdown(nextMs)}.` : "Don't break it — set an alarm so it counts.";
+  } else if (streak > 0 && won) {
+    tint = colors.success;
+    title = `${streak}-DAY STREAK · LOCKED IN`;
+    sub = "Today's done. Keep it alive tomorrow.";
+  }
+
+  return (
+    <View style={[styles.streakCard, { borderColor: tint }]} testID="streak-status">
+      <View style={[styles.streakIcon, { backgroundColor: tint }]}>
+        <Ionicons name="flame" size={26} color={colors.black} />
+      </View>
+      <View style={styles.streakTextWrap}>
+        <Text style={[styles.streakTitle, { color: tint }]}>{title}</Text>
+        <Text style={styles.streakSub}>{sub}</Text>
+      </View>
+    </View>
+  );
+}
+
 function AlarmCard({ alarm }: { alarm: Alarm }) {
   const { toggleAlarm, fireAlarmNow } = useAlarm();
   const router = useRouter();
@@ -75,7 +126,7 @@ function AlarmCard({ alarm }: { alarm: Alarm }) {
       </View>
 
       <Text style={[styles.cardLabel, !alarm.enabled && styles.dim]} numberOfLines={1}>
-        {alarm.label || "Alarm"}
+        {alarm.emoji ? `${alarm.emoji}  ` : ""}{alarm.label || "Alarm"}
       </Text>
 
       <View style={styles.metaRow}>
@@ -163,6 +214,7 @@ export default function AlarmsScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <AwakeBanner />
+        <StreakStatus />
 
         {!loading && alarms.length === 0 && (
           <View style={styles.empty} testID="empty-state">
@@ -171,6 +223,16 @@ export default function AlarmsScreen() {
             <Text style={styles.emptySub}>
               Set your first wake-up and prove you&apos;re awake — for real this time.
             </Text>
+            <Pressable
+              testID="empty-reliability-link"
+              onPress={() => router.push("/reliability")}
+              style={styles.reliabilityLink}
+            >
+              <Ionicons name="shield-checkmark" size={15} color={colors.primary} />
+              <Text style={styles.reliabilityLinkText}>
+                Make sure it&apos;ll wake you — run a reliability check
+              </Text>
+            </Pressable>
           </View>
         )}
 
@@ -238,6 +300,20 @@ const styles = StyleSheet.create({
   bannerSub: { fontFamily: fonts.body, fontSize: 15, color: colors.textPrimary },
   bannerCountdown: { fontFamily: fonts.monoBold, color: colors.primary },
   bannerProgress: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 4 },
+  streakCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  streakIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
+  streakTextWrap: { flex: 1 },
+  streakTitle: { fontFamily: fonts.bodyExtra, fontSize: 13, letterSpacing: 1, marginBottom: 2 },
+  streakSub: { fontFamily: fonts.body, fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -289,6 +365,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     lineHeight: 22,
   },
+  reliabilityLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  reliabilityLinkText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.primary },
   fab: {
     position: "absolute",
     alignSelf: "center",

@@ -24,6 +24,9 @@ export default function SessionNavigator() {
       case "dismiss-mission":
         router.replace("/mission");
         break;
+      case "snoozed":
+        router.replace("/snooze");
+        break;
       case "checkin-ringing":
         router.replace("/checkin");
         break;

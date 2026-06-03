@@ -1,10 +1,11 @@
-export type MissionType = "math" | "typing" | "shake" | "qr" | "step";
+export type MissionType = "math" | "typing" | "shake" | "qr" | "step" | "memory" | "order";
 export type Difficulty = "easy" | "medium" | "hard";
 export type StayAwakeMode = "light" | "standard" | "strict";
 
 export interface Alarm {
   id: string;
   label: string;
+  emoji?: string; // optional personality icon shown on the card
   hour: number; // 0-23
   minute: number; // 0-59
   enabled: boolean;
@@ -19,6 +20,7 @@ export interface Alarm {
 export type SessionPhase =
   | "ringing"
   | "dismiss-mission"
+  | "snoozed"
   | "awake"
   | "checkin-ringing"
   | "checkin-mission"
@@ -31,6 +33,7 @@ export interface WakeSession {
   displayTime: string;
   dismissMission: Exclude<MissionType, "random">;
   difficulty: Difficulty;
+  escalated: boolean; // difficulty auto-raised due to recent rough mornings
   mode: StayAwakeMode;
   phase: SessionPhase;
   fast: boolean;
@@ -45,6 +48,12 @@ export interface WakeSession {
   missionCompletedAt: number | null;
   cycle: number;
   startedAt: number;
+  // Earn-snooze: a snooze is only granted after the dismiss mission is solved,
+  // and only once per session, so it can't be abused.
+  snoozesLeft: number;
+  snoozeIntent: boolean;
+  snoozeUntil: number | null;
+  snoozesUsed: number;
 }
 
 export type MorningStatus = "in-progress" | "success" | "recovered" | "failed";
@@ -66,6 +75,7 @@ export interface MorningRecord {
   checkInsPassed: number;
   checkInsMissed: number;
   reAlarms: number;
+  snoozesUsed: number;
   wakeScore: number;
 }
 
@@ -74,6 +84,9 @@ export interface Settings {
   defaultMode: StayAwakeMode;
   defaultSound: string;
   hapticsEnabled: boolean;
+  bedtimeEnabled: boolean;
+  bedtimeHour: number; // 0-23
+  bedtimeMinute: number; // 0-59
 }
 
 export interface AppMeta {
