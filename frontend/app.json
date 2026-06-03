@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "bundleIdentifier": "com.antics242.staywake",
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Scan a QR code across the room to stop your alarm",
