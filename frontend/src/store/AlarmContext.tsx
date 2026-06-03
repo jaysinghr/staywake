@@ -19,7 +19,13 @@ import {
   WakeSession,
 } from "@/src/types";
 import { dateKey, displayTime } from "@/src/lib/time";
-import { configureNotifications, syncNotifications } from "@/src/lib/notifications";
+import { configureNotifications, syncBedtime } from "@/src/lib/notifications";
+import {
+  scheduleAlarms,
+  clearAlarmRinging,
+  getInitialAlarmId,
+  onAlarmEvent,
+} from "@/src/lib/alarm-notify";
 import {
   adjustedDifficulty,
   checkpointOffsets,
@@ -162,14 +168,18 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
       setSettings(s);
       setMeta(m);
       setLoading(false);
-      configureNotifications().then(() => syncNotifications(a, s));
+      configureNotifications().then(() => {
+        syncBedtime(a, s);
+        scheduleAlarms(a);
+      });
     })();
   }, []);
 
   const persistAlarms = useCallback(async (next: Alarm[]) => {
     setAlarms(next);
     await storage.setItem(ALARMS_KEY, JSON.stringify(next));
-    syncNotifications(next, settingsRef.current);
+    scheduleAlarms(next);
+    syncBedtime(next, settingsRef.current);
   }, []);
 
   const writeHistory = useCallback((next: MorningRecord[]) => {
@@ -327,37 +337,18 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
               : prev,
           );
         }
-        return;
       }
-      const now = new Date();
-      if (now.getSeconds() >= 4) return;
-      for (const alarm of alarmsRef.current) {
-        if (!alarm.enabled) continue;
-        if (alarm.hour !== now.getHours() || alarm.minute !== now.getMinutes()) continue;
-        const repeats = alarm.repeatDays.length > 0;
-        if (repeats && !alarm.repeatDays.includes(now.getDay())) continue;
-        const key = `${alarm.id}-${dateKey(now)}-${alarm.hour}-${alarm.minute}`;
-        if (firedKeys.current.has(key)) continue;
-        firedKeys.current.add(key);
-        startSession(alarm, false);
-        if (!repeats) {
-          persistAlarms(
-            alarmsRef.current.map((x) =>
-              x.id === alarm.id ? { ...x, enabled: false } : x,
-            ),
-          );
-        }
-        break;
-      }
+      // Alarm firing (incl. while locked/backgrounded) is owned by Notifee; the
+      // tick only advances in-session check-in and snooze timers above.
     };
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- session lifecycle ----
   const startSession = useCallback(
     (alarm: Alarm, fast: boolean) => {
+      clearAlarmRinging(); // stop the Notifee ring; expo-audio takes over in-app
       const dismiss = alarm.missionType;
       const { difficulty: effDifficulty, escalated } = adjustedDifficulty(
         alarm.difficulty,
@@ -425,32 +416,41 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
     [startSession],
   );
 
-  // When the user taps a fired alarm notification, open the ring flow.
-  useEffect(() => {
-    let sub: any;
-    let mounted = true;
-    (async () => {
-      if (Platform.OS === "web") return;
-      try {
-        const N = await import("expo-notifications");
-        if (!mounted) return;
-        sub = N.addNotificationResponseReceivedListener((resp) => {
-          const alarmId = resp?.notification?.request?.content?.data?.alarmId as
-            | string
-            | undefined;
-          if (!alarmId || sessionRef.current) return;
-          const alarm = alarmsRef.current.find((a) => a.id === alarmId);
-          if (alarm) startSession(alarm, false);
-        });
-      } catch {
-        // ignore
+  // A Notifee alarm fired (foreground delivery, tap, or cold launch from a
+  // full-screen lock-screen alarm): open the ring flow and consume one-timers.
+  const handleAlarmFire = useCallback(
+    (alarmId: string) => {
+      if (sessionRef.current) return;
+      const alarm = alarmsRef.current.find((a) => a.id === alarmId);
+      if (!alarm) return;
+      startSession(alarm, false);
+      if (alarm.repeatDays.length === 0) {
+        persistAlarms(
+          alarmsRef.current.map((x) =>
+            x.id === alarm.id ? { ...x, enabled: false } : x,
+          ),
+        );
       }
-    })();
+    },
+    [startSession, persistAlarms],
+  );
+
+  useEffect(() => {
+    const unsub = onAlarmEvent(handleAlarmFire);
+    return () => unsub();
+  }, [handleAlarmFire]);
+
+  // Cold launch from an alarm — wait until alarms are loaded before matching.
+  useEffect(() => {
+    if (loading) return;
+    let mounted = true;
+    getInitialAlarmId().then((id) => {
+      if (mounted && id) handleAlarmFire(id);
+    });
     return () => {
       mounted = false;
-      sub?.remove?.();
     };
-  }, [startSession]);
+  }, [loading, handleAlarmFire]);
 
   const beginDismissMission = useCallback(() => {
     setSession((prev) => (prev ? { ...prev, phase: "dismiss-mission" } : prev));
@@ -665,7 +665,7 @@ export function AlarmProvider({ children }: { children: React.ReactNode }) {
         patch.bedtimeHour !== undefined ||
         patch.bedtimeMinute !== undefined
       ) {
-        syncNotifications(alarmsRef.current, next);
+        syncBedtime(alarmsRef.current, next);
       }
       return next;
     });

@@ -8,9 +8,9 @@ import { colors, fonts, radius, spacing } from "@/src/theme";
 import {
   ensureNotificationPermission,
   getNotificationPermissionStatus,
-  scheduleTestAlarm,
   PermStatus,
 } from "@/src/lib/notifications";
+import { scheduleTestAlarm } from "@/src/lib/alarm-notify";
 
 const TIPS = [
   { icon: "battery-charging", title: "Disable battery optimisation", text: "Android may kill background apps to save power. Allow StayWake to run unrestricted in your phone's battery settings." },

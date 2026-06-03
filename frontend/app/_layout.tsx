@@ -22,6 +22,7 @@ import {
   JetBrainsMono_700Bold,
 } from "@expo-google-fonts/jetbrains-mono";
 
+import "@/src/lib/notifee-background";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AlarmProvider } from "@/src/store/AlarmContext";
 import SessionNavigator from "@/src/components/SessionNavigator";
